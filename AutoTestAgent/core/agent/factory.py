@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 from config.settings import AgentConfig
+from core.llm.base import BrainProvider
 from core.llm.factory import create_llm
 from core.llm.adapter import LLMAdapter
 from core.vision.base import VisionProvider
@@ -24,21 +25,20 @@ _VISION_PKG = "core.vision.providers"
 
 
 def _load_vision(config: AgentConfig) -> VisionProvider:
-    module_name = f"{_VISION_PKG}.{config.vision_type}"
+    module_name = f"{_VISION_PKG}.{config.vision.vision_type}"
     logger.info("加载视觉 Provider: %s", module_name)
     try:
         mod = importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
         raise ImportError(
             f"找不到视觉 Provider: {module_name}\n"
-            f"请在 core/vision/providers/ 下创建 {config.vision_type}.py 并定义 Provider 类。"
+            f"请在 core/vision/providers/ 下创建 {config.vision.vision_type}.py 并定义 Provider 类。"
         ) from exc
 
     cls = getattr(mod, "Provider", None)
     if cls is None:
         raise AttributeError(f"{module_name} 中未定义 'Provider' 类")
 
-    # 优先调用 from_config(config)；旧 Provider 回退到 extra 字典传参
     if hasattr(cls, "from_config"):
         provider = cls.from_config(config)
     else:
@@ -48,12 +48,12 @@ def _load_vision(config: AgentConfig) -> VisionProvider:
     return provider
 
 
-def _create_llm_adapter(config: AgentConfig):
+def _create_llm_adapter(config: AgentConfig) -> BrainProvider:
     """使用 LangChain 工厂创建 LLMAdapter，或返回 SequentialDecider（无需 LLM）。
 
-    LLM_PROVIDER=sequential 时跳过真实模型调用，按元素 ID 顺序遍历。
+    llm.provider=sequential 时跳过真实模型调用，按元素 ID 顺序遍历。
     """
-    if config.llm_provider == "sequential":
+    if config.llm.provider == "sequential":
         from core.llm.sequential import SequentialDecider
         decider = SequentialDecider()
         logger.info("LLM: SequentialDecider（顺序遍历，无需 API Key）")
@@ -62,7 +62,7 @@ def _create_llm_adapter(config: AgentConfig):
     llm = create_llm(config)
     adapter = LLMAdapter(
         llm=llm,
-        template_key=config.llm_template_key,
+        template_key=config.llm.template_key,
     )
     logger.info("LLMAdapter 初始化完成: %r", adapter)
     return adapter
@@ -71,7 +71,7 @@ def _create_llm_adapter(config: AgentConfig):
 def get_agent(
     config: AgentConfig,
     vision: Optional[VisionProvider] = None,
-    llm: Optional[LLMAdapter] = None,
+    llm: Optional[BrainProvider] = None,
 ) -> LangGraphWorker:
     """根据配置构建 LangGraphWorker。
 

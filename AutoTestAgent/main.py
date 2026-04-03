@@ -82,9 +82,9 @@ def main() -> int:
     config = load_config(args.env or None)
 
     if args.vision:
-        config.vision_type = args.vision
+        config.vision.vision_type = args.vision
     if args.llm_provider:
-        config.llm_provider = args.llm_provider
+        config.llm.provider = args.llm_provider
 
     # ── 任务输入 ─────────────────────────────────────────────────
     task = args.task.strip()
@@ -96,8 +96,8 @@ def main() -> int:
 
     # ── 构建 Agent ──────────────────────────────────────────────
     logger.info("正在初始化 Agent...")
-    logger.info("  Vision Provider : %s", config.vision_type)
-    logger.info("  LLM   Provider  : %s / %s", config.llm_provider, config.model_name)
+    logger.info("  Vision Provider : %s", config.vision.vision_type)
+    logger.info("  LLM   Provider  : %s / %s", config.llm.provider, config.llm.model_name)
 
     from core.agent import get_agent
     worker = get_agent(config)

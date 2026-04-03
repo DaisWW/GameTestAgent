@@ -12,6 +12,7 @@
 AutoTestAgent/
 ├── main.py                        # 入口
 ├── requirements.txt               # Python 依赖
+├── run.bat                        # Windows 一键启动（自动安装+运行）
 ├── setup.bat                      # Windows 一键安装脚本
 ├── setup.sh                       # Linux/macOS 一键安装脚本
 ├── .env.example                   # 配置模板（复制为 .env 填写）
@@ -30,7 +31,7 @@ AutoTestAgent/
 │   │   ├── perception.py          # compute_phash / is_page_changed
 │   │   └── providers/
 │   │       ├── omni_v2.py         # OmniParser V2（默认）
-│   │       └── mock_vision.py     # Mock，用于调试 / CI
+│   │       └── mock.py            # Mock，用于调试 / CI
 │   ├── memory/                    # 三层记忆（实际代码在此）
 │   │   ├── working_memory.py      # 第一层：短期工作记忆
 │   │   ├── nav_graph.py           # 第二层：导航图（NetworkX）
@@ -40,7 +41,6 @@ AutoTestAgent/
 │   ├── agent/
 │   │   ├── factory.py             # get_agent(config)
 │   │   └── worker.py              # LangGraphWorker
-│   └── brain/                     # [已废弃] shim → core/llm/
 │
 ├── workflows/
 │   ├── waterfall_flow.py          # LangGraph 5 节点瀑布流
@@ -61,10 +61,6 @@ AutoTestAgent/
 │       ├── omniparser.sh          # Linux/Mac 启动器
 │       ├── OmniParser/            # git clone（gitignored）
 │       └── weights/               # 模型权重（gitignored）
-│
-├── memory/                        # shim → core/memory/（向后兼容）
-├── context/                       # shim → core/context/（向后兼容）
-├── graph/                         # shim → workflows/（向后兼容）
 │
 └── tools/                         # ADB 工具层
     ├── adb_controller.py
@@ -106,7 +102,7 @@ flowchart TD
     subgraph Vision["视觉层  core/vision/"]
         VBase["VisionProvider ABC\nbase.py"]
         OmniV2["OmniParser V2\nomni_v2.py"]
-        MockV["MockVision\nmock_vision.py"]
+        MockV["MockVision\nmock.py"]
         Percept["compute_phash / is_page_changed\nperception.py"]
         VBase --> OmniV2
         VBase --> MockV
@@ -205,13 +201,17 @@ bash models/omni/omniparser.sh
 
 ### 4. 运行测试
 
+**Windows（推荐）**
+```bat
+run.bat                                  # 交互式输入任务
+run.bat --task "进入设置并开启夜间模式"  # 直接传参
+run.bat --task "测试登录" --vision mock  # Mock 视觉快速调试
+```
+
+**直接调用 Python**
 ```bash
 python main.py --task "进入设置并开启夜间模式"
-
-# Mock 视觉快速调试（无需 OmniParser）
 python main.py --task "测试登录流程" --vision mock
-
-# 切换到 Claude / Gemini / Ollama
 python main.py --task "测试登录流程" --llm-provider anthropic
 ```
 

@@ -20,33 +20,34 @@ from typing import TYPE_CHECKING
 from langchain_core.language_models import BaseChatModel
 
 if TYPE_CHECKING:
-    from config.settings import AgentConfig
+    from config.settings import AgentConfig, LLMConfig
 
 logger = logging.getLogger(__name__)
 
 
 def create_llm(config: "AgentConfig") -> BaseChatModel:
-    """根据 config.llm_provider 创建对应的 LangChain 模型实例。
+    """根据 config.llm.provider 创建对应的 LangChain 模型实例。
 
     Returns:
         实现了 BaseChatModel 接口的 LLM 实例，可直接 .invoke() / .stream()。
     """
-    provider = config.llm_provider
+    llm_cfg = config.llm
+    provider = llm_cfg.provider
     maker = _MAKERS.get(provider)
     if maker is None:
         raise ValueError(
-            f"不支持的 llm_provider: {provider!r}，"
+            f"不支持的 llm.provider: {provider!r}，"
             f"可选值: {list(_MAKERS)}"
         )
-    llm = maker(config)
-    logger.info("LLM 已创建: provider=%s model=%s", provider, config.model_name)
+    llm = maker(llm_cfg)
+    logger.info("LLM 已创建: provider=%s model=%s", provider, llm_cfg.model_name)
     return llm
 
 
 # ── 各 provider 构造函数 ─────────────────────────────────────────
 
 
-def _make_openai(config: "AgentConfig") -> BaseChatModel:
+def _make_openai(cfg: "LLMConfig") -> BaseChatModel:
     """OpenAI 兼容接口（含 Qwen / DeepSeek / Moonshot / Ollama 等）。
 
     只需在 .env 中设置正确的 LLM_API_BASE 即可切换到任意兼容后端：
@@ -56,33 +57,33 @@ def _make_openai(config: "AgentConfig") -> BaseChatModel:
     """
     from langchain_openai import ChatOpenAI
     return ChatOpenAI(
-        api_key=config.api_key or "dummy",
-        base_url=config.api_base or None,
-        model=config.model_name,
-        max_tokens=config.max_tokens,
-        temperature=config.temperature,
+        api_key=cfg.api_key or "dummy",
+        base_url=cfg.api_base or None,
+        model=cfg.model_name,
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
     )
 
 
-def _make_anthropic(config: "AgentConfig") -> BaseChatModel:
+def _make_anthropic(cfg: "LLMConfig") -> BaseChatModel:
     """Anthropic Claude 系列（claude-3-5-sonnet 等）。"""
     from langchain_anthropic import ChatAnthropic
     return ChatAnthropic(
-        api_key=config.api_key,
-        model=config.model_name,
-        max_tokens=config.max_tokens,
-        temperature=config.temperature,
+        api_key=cfg.api_key,
+        model=cfg.model_name,
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
     )
 
 
-def _make_google(config: "AgentConfig") -> BaseChatModel:
+def _make_google(cfg: "LLMConfig") -> BaseChatModel:
     """Google Gemini 系列（gemini-1.5-pro 等）。"""
     from langchain_google_genai import ChatGoogleGenerativeAI
     return ChatGoogleGenerativeAI(
-        google_api_key=config.api_key,
-        model=config.model_name,
-        max_output_tokens=config.max_tokens,
-        temperature=config.temperature,
+        google_api_key=cfg.api_key,
+        model=cfg.model_name,
+        max_output_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
     )
 
 

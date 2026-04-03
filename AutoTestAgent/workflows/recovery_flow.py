@@ -69,7 +69,7 @@ def _make_recover_node(worker: "LangGraphWorker"):
                 time.sleep(2)
             elif strategy == "launch_game":
                 adb.launch_game()
-                time.sleep(worker.config.game_launch_wait)
+                time.sleep(worker.config.adb.game_launch_wait)
             elif strategy == "abandon":
                 return {**state, "give_up": True}
         except Exception as exc:
@@ -84,14 +84,16 @@ def _make_verify_node(worker: "LangGraphWorker"):
         if state.get("give_up"):
             return state
 
-        from core.vision.perception import compute_phash
         try:
             screenshot = worker.capture()
-            _ = compute_phash(screenshot)
-            logger.info("[Recovery] 截图成功，判断为已恢复")
-            return {**state, "recovered": True}
+            elements   = worker.detect(screenshot)
+            if elements:
+                logger.info("[Recovery] 检测到 %d 个 UI 元素，判断为已恢复", len(elements))
+                return {**state, "recovered": True}
+            logger.warning("[Recovery] 截图成功但未检测到 UI 元素，继续尝试下一策略")
+            return {**state, "recovered": False}
         except Exception as exc:
-            logger.warning("[Recovery] 截图失败，继续尝试下一策略: %s", exc)
+            logger.warning("[Recovery] 截图/检测失败，继续尝试下一策略: %s", exc)
             return {**state, "recovered": False}
     return verify_node
 

@@ -23,6 +23,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
 
+from core.llm.base import BrainProvider
+
 if TYPE_CHECKING:
     from core.context.protocol import ContextPacket
 
@@ -60,7 +62,7 @@ def _encode_image(image) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-class LLMAdapter:
+class LLMAdapter(BrainProvider):
     """统一 LLM 调用接口。
 
     通过 LangChain BaseChatModel 抽象层屏蔽所有 provider 差异，

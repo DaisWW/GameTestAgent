@@ -36,25 +36,24 @@ class NavigationGraph:
         self,
         page_hash: str,
         elements: Optional[List[Dict[str, Any]]] = None,
-        screenshot_path: str = "",
     ) -> None:
         """注册或更新页面节点。
 
         Args:
-            page_hash:       页面感知哈希。
-            elements:        VisionProvider.detect() 返回的元素列表
-                             每项格式: {id, bbox, label, type}。
-            screenshot_path: 该页面截图的本地路径（首次捕获时填入）。
+            page_hash: 页面感知哈希。
+            elements:  VisionProvider.detect() 返回的元素列表
+                       每项格式: {id, bbox, label, type, interactable}。
         """
         if not self._g.has_node(page_hash):
-            self._g.add_node(page_hash, visit_count=0, elements=[], screenshot_path="")
+            self._g.add_node(page_hash, visit_count=0, elements=[])
             self._visited_map[page_hash] = set()
             logger.debug("注册新页面节点: %s", page_hash[:8])
-        self._g.nodes[page_hash]["visit_count"] += 1
+        node = self._g.nodes[page_hash]
+        node.setdefault("visit_count", 0)
+        node.setdefault("elements", [])
+        node["visit_count"] += 1
         if elements:
             self._g.nodes[page_hash]["elements"] = elements
-        if screenshot_path and not self._g.nodes[page_hash].get("screenshot_path"):
-            self._g.nodes[page_hash]["screenshot_path"] = screenshot_path
 
     def mark_visited(self, page_hash: str, element_id: int) -> None:
         if page_hash not in self._visited_map:
@@ -72,9 +71,10 @@ class NavigationGraph:
         """返回页面元素的 label 列表（向后兼容）。"""
         return [e.get("label", "") for e in self.get_elements(page_hash) if e.get("label")]
 
-    def get_screenshot_path(self, page_hash: str) -> str:
-        """返回页面截图路径，未存储时返回空串。"""
-        return self._g.nodes[page_hash].get("screenshot_path", "") if self._g.has_node(page_hash) else ""
+    def screenshot_path(self, page_hash: str, memory_dir: str) -> str:
+        """按约定推导页面截图路径: memory/screenshots/{hash}.png。"""
+        from pathlib import Path
+        return str(Path(memory_dir) / "screenshots" / f"{page_hash}.png")
 
     def get_unvisited_ids(self, page_hash: str, all_element_ids: List[int]) -> List[int]:
         visited = self._visited_map.get(page_hash, set())
@@ -132,8 +132,13 @@ class NavigationGraph:
             "pages":            self._g.number_of_nodes(),
             "transitions":      self._g.number_of_edges(),
             "visited_elements": sum(len(v) for v in self._visited_map.values()),
-            "cycles":           len(self.find_simple_cycles()),
         }
+
+    def full_stats(self) -> Dict[str, Any]:
+        """含环检测的完整统计（较慢，仅在最终报告时调用）。"""
+        s = self.stats()
+        s["cycles"] = len(self.find_simple_cycles())
+        return s
 
     def save_json(self, path: Optional[str] = None) -> None:
         target = path or self._graph_path
@@ -160,5 +165,4 @@ class NavigationGraph:
         self._visited_map = {k: set(v) for k, v in raw.get("visited_map", {}).items()}
 
     def __repr__(self) -> str:
-        s = self.stats()
-        return f"NavigationGraph(pages={s['pages']}, transitions={s['transitions']}, visited_elements={s['visited_elements']})"
+        return f"NavigationGraph(pages={self._g.number_of_nodes()}, transitions={self._g.number_of_edges()}, visited_elements={sum(len(v) for v in self._visited_map.values())})"

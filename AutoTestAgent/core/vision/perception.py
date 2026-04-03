@@ -24,7 +24,8 @@ _FREEZE_HAMMING_THRESHOLD = 4   # phash 差距 ≤ 4 bit 认为页面"未变化"
 def compute_phash(image) -> str:
     """计算图片感知哈希（Perceptual Hash）。
 
-    优先使用 imagehash 库（更稳定），fallback 到 MD5（精确匹配）。
+    依赖 imagehash 库（列于 requirements.txt）。若未安装会直接 ImportError，
+    请运行 ``pip install imagehash`` 或 ``setup.bat``。
 
     Args:
         image: PIL.Image.Image
@@ -32,14 +33,8 @@ def compute_phash(image) -> str:
     Returns:
         16 进制字符串哈希值，例如 "a1b2c3d4e5f67890"
     """
-    try:
-        import imagehash
-        return str(imagehash.phash(image))
-    except ImportError:
-        import hashlib
-        buf = io.BytesIO()
-        image.save(buf, format="PNG")
-        return hashlib.md5(buf.getvalue()).hexdigest()[:16]
+    import imagehash  # hard dependency：未安装则立即报错，避免 MD5 fallback 破坏循环检测
+    return str(imagehash.phash(image))
 
 
 def hamming_distance(hash_a: str, hash_b: str) -> int:

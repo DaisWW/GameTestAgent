@@ -40,7 +40,7 @@ class Provider(VisionProvider):
 
     使用示例::
 
-        from core.vision.providers.mock_vision import Provider
+        from core.vision.providers.mock import Provider
 
         vision = Provider(elements=[
             {"id": 0, "bbox": [10, 20, 100, 50], "label": "登录", "type": "button"},

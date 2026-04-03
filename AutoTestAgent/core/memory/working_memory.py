@@ -87,7 +87,7 @@ class WorkingMemory:
     def detect_stale_click(self, consecutive_threshold: int = 3) -> Optional[str]:
         if len(self._steps) < consecutive_threshold:
             return None
-        recent = self._steps[-consecutive_threshold:]
+        recent = list(self._steps)[-consecutive_threshold:]
         if all(not s.success for s in recent):
             actions = [f"{s.action}({s.element_label})" for s in recent]
             return (

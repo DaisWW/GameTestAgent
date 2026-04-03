@@ -24,12 +24,7 @@ ENV/
 !.env.example
 
 # ── Runtime data（保留目录但忽略内容）──────────────────────────────
-data/logs/*.db
-data/logs/*.json
-data/screenshots/*.png
-data/screenshots/*.jpg
-!data/logs/.gitkeep
-!data/screenshots/.gitkeep
+data
 
 # ── 本地模型权重（体积大，不入仓）──────────────────
 models/**/OmniParser/
@@ -53,3 +48,5 @@ OmniParser/*.pth
 Thumbs.db
 desktop.ini
 ehthumbs.db
+
+platform-tools

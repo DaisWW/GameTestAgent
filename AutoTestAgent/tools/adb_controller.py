@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 import re
 import subprocess
@@ -6,10 +7,12 @@ import time
 from typing import List, Optional
 
 from .adb_setup import ensure_adb
-from .core import RunnerSettings, err, ok, warn
+from .core import RunnerSettings
 from .exceptions import ADBError, CommandFailedError, DeviceNotFoundError
 from .screen_recorder import ScreenRecorder
 from .utils import escape_for_adb_input
+
+logger = logging.getLogger(__name__)
 
 
 class ADBController:
@@ -61,28 +64,28 @@ class ADBController:
         )
         if result.returncode != 0:
             detail = self._result_detail(result) or "unknown error"
-            err(f"ADB devices 失败：{detail}")
+            logger.error("ADB devices 失败：%s", detail)
             raise CommandFailedError(f"adb devices 失败: {detail}", returncode=result.returncode)
 
         lines = [l.strip() for l in result.stdout.splitlines() if "\tdevice" in l]
         if not lines:
-            err("未检测到已连接的 ADB 设备")
-            err("请确认：① USB 调试已开启  ② adb devices 能看到设备")
+            logger.error("未检测到已连接的 ADB 设备")
+            logger.error("请确认：① USB 调试已开启  ② adb devices 能看到设备")
             raise DeviceNotFoundError("未检测到已连接的 ADB 设备")
 
         if self.serial and all(not l.startswith(f"{self.serial}\t") for l in lines):
-            err(f"未找到指定设备：{self.serial}")
-            err(f"当前可用设备：{[l.split()[0] for l in lines]}")
+            logger.error("未找到指定设备：%s", self.serial)
+            logger.error("当前可用设备：%s", [l.split()[0] for l in lines])
             raise DeviceNotFoundError(f"未找到指定设备：{self.serial}")
 
         if not self.serial and len(lines) > 1:
-            warn(f"检测到多个设备，默认使用第一个：{[l.split()[0] for l in lines]}")
+            logger.warning("检测到多个设备，默认使用第一个：%s", [l.split()[0] for l in lines])
 
         if not self.serial:
             self.serial = lines[0].split()[0]
             self._base = [self._adb, "-s", self.serial]
 
-        ok(f"ADB 设备：{self.serial}")
+        logger.info("ADB 设备：%s", self.serial)
 
         res = self._run(["shell", "wm", "size"], capture_output=True, text=True)
         match = (
@@ -92,9 +95,9 @@ class ADBController:
         )
         if match:
             self.dev_w, self.dev_h = int(match.group(1)), int(match.group(2))
-            ok(f"屏幕分辨率：{self.dev_w}×{self.dev_h}")
+            logger.info("屏幕分辨率：%dx%d", self.dev_w, self.dev_h)
         else:
-            warn("无法获取屏幕分辨率，使用默认 1080×2400")
+            logger.warning("无法获取屏幕分辨率，使用默认 1080×2400")
             self.dev_w, self.dev_h = 1080, 2400
 
     # ── 截图 ──────────────────────────────────────────────────────
@@ -102,12 +105,20 @@ class ADBController:
     def screenshot(self):
         from PIL import Image
 
-        result = self._run(["exec-out", "screencap", "-p"], capture_output=True)
-        if result.returncode != 0 or not result.stdout:
-            raise CommandFailedError("screencap 失败", returncode=result.returncode)
-        image = Image.open(io.BytesIO(result.stdout))
-        self.dev_w, self.dev_h = image.width, image.height
-        return image
+        for attempt in range(3):
+            result = self._run(["exec-out", "screencap", "-p"], capture_output=True)
+            if result.returncode == 0 and result.stdout:
+                image = Image.open(io.BytesIO(result.stdout))
+                self.dev_w, self.dev_h = image.width, image.height
+                return image
+            # 失败：先关键盘/弹窗，再唤屏，然后重试
+            logger.warning("screencap 第 %d 次失败，尝试关键盘/唤屏后重试...", attempt + 1)
+            self._run(["shell", "input", "keyevent", "KEYCODE_BACK"],  check=False)
+            time.sleep(0.3)
+            self._run(["shell", "input", "keyevent", "KEYCODE_WAKEUP"], check=False)
+            time.sleep(0.5)
+
+        raise CommandFailedError("screencap 失败（重试 3 次）", returncode=-1)
 
     # ── 手势操作 ──────────────────────────────────────────────────
 
@@ -141,7 +152,7 @@ class ADBController:
         for index, segment in enumerate(segments):
             safe_text, has_non_ascii = escape_for_adb_input(segment)
             if has_non_ascii and not non_ascii_warned:
-                warn("输入文本含非 ASCII 字符，部分设备可能无法正确输入")
+                logger.warning("输入文本含非 ASCII 字符，部分设备可能无法正确输入")
                 non_ascii_warned = True
             if safe_text:
                 self._run_checked(["shell", "input", "text", safe_text], "输入文本失败")
@@ -184,7 +195,7 @@ class ADBController:
     def start_recording(self, remote_dir: str = "/sdcard", segment_secs: int = 170) -> None:
         """启动分段录屏，每段 segment_secs 秒自动续接，绕过设备 180s 硬限。"""
         if self._recorder and self._recorder.is_recording:
-            warn("录屏已在进行中，先停止旧录屏再启动")
+            logger.warning("录屏已在进行中，先停止旧录屏再启动")
             self.stop_recording()
         self._recorder = ScreenRecorder(self._base, remote_dir=remote_dir, segment_secs=segment_secs)
         self._recorder.start()

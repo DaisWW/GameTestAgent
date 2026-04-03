@@ -6,12 +6,15 @@ from __future__ import annotations
 可通过 LLM_PROVIDER=sequential 或 --llm-provider sequential 直接替换。
 
 决策逻辑：
-    1. 从 ContextPacket.get_unvisited_ids() 取第一个未访问元素 → tap
-    2. 全部访问完 → done=True
+    1. 从 ContextPacket.get_unvisited_ids() 取未访问元素
+    2. 跳过 input 类型（文本输入框）和非可交互元素（纯文本标签）
+    3. 全部访问完（或均不可点）→ done=True
 """
 
 import logging
 from typing import Any, Dict, TYPE_CHECKING
+
+from core.llm.base import BrainProvider
 
 if TYPE_CHECKING:
     from core.context.protocol import ContextPacket
@@ -19,14 +22,35 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class SequentialDecider:
+_SKIP_TYPES = {"input"}  # 跳过这些类型：需要键盘输入，顺序模式无法处理
+
+
+class SequentialDecider(BrainProvider):
     """顺序遍历决策器，无需任何 LLM 或 API Key。"""
 
-    def ask(self, packet: "ContextPacket") -> Dict[str, Any]:
-        unvisited = packet.get_unvisited_ids()
+    def _is_tappable(self, elem: Dict[str, Any]) -> bool:
+        """判断元素是否可以被顺序点击。"""
+        if elem.get("type") in _SKIP_TYPES:
+            return False
+        if not elem.get("interactable", True):
+            return False
+        return True
 
-        if not unvisited:
-            logger.info("  [Sequential] 所有元素已遍历，结束任务")
+    def ask(self, packet: "ContextPacket") -> Dict[str, Any]:
+        unvisited  = packet.get_unvisited_ids()
+        elem_map   = {e["id"]: e for e in packet.current_observation.get("omni_boxes", [])}
+
+        # 从未访问列表中过滤出可点击的元素
+        tappable = [eid for eid in unvisited if self._is_tappable(elem_map.get(eid, {}))]
+        skipped  = [eid for eid in unvisited if not self._is_tappable(elem_map.get(eid, {}))]
+
+        if skipped:
+            skip_labels = [elem_map.get(s, {}).get("label", str(s)) for s in skipped]
+            logger.info("  [Sequential] 跳过 %d 个元素（input/非交互）: %s",
+                        len(skipped), skip_labels)
+
+        if not tappable:
+            logger.info("  [Sequential] 所有可点击元素已遍历，结束任务")
             return {
                 "action":    "done",
                 "params":    {},
@@ -35,12 +59,11 @@ class SequentialDecider:
                 "result":    "pass",
             }
 
-        elem_id   = unvisited[0]
-        elem_map  = {e["id"]: e for e in packet.current_observation.get("omni_boxes", [])}
-        label     = elem_map.get(elem_id, {}).get("label", "")
+        elem_id = tappable[0]
+        label   = elem_map.get(elem_id, {}).get("label", "")
 
-        logger.info("  [Sequential] tap [%d] %s（剩余 %d 个未访问）",
-                    elem_id, label, len(unvisited) - 1)
+        logger.info("  [Sequential] tap [%d] %s（剩余 %d 个可点击）",
+                    elem_id, label, len(tappable) - 1)
 
         return {
             "action":    "tap",

@@ -2,25 +2,16 @@ from __future__ import annotations
 
 """OmniParser V2 视觉 Provider。
 
-支持两种运行模式（通过 mode 参数切换）：
-
-1. **local**（默认）
-   直接在当前进程加载 OmniParser 模型（需运行 models/omni/omniparser.bat 下载权重）。
-   适合单机一体化部署，零额外进程。
-   配置：OMNI_MODE=local  OMNI_MODEL_PATH=models/omni/OmniParser/weights
-
-2. **http**
-   在本机或远端另起 OmniParser 服务：
-       python models/omni/omniparser.py
-   本 Provider 通过 HTTP 调用，完全不占用当前进程显存。
-   配置：OMNI_MODE=http  OMNI_ENDPOINT=http://127.0.0.1:7861
+通过 HTTP 调用独立运行的 OmniParser 服务：
+    python models/omni/omniparser.py
+配置：OMNI_ENDPOINT=http://127.0.0.1:7861
 """
 
-import base64
-import io
-import json
+import ast
 import logging
-from typing import Any, Dict, List, Optional
+import os
+import tempfile
+from typing import Any, Dict, List
 
 from PIL import Image
 
@@ -49,7 +40,7 @@ def _normalize_bbox(bbox: List[float], w: int, h: int) -> List[int]:
     OmniParser V2 输出: [x1, y1, x2, y2]，可能是绝对像素或 0-1 归一化。
     自动判断：若所有值均 <= 1.0 则认为是 0-1 归一化。
     """
-    if all(v <= 1.0 for v in bbox):
+    if all(0.0 <= v <= 1.0 for v in bbox) and any(v > 0 for v in bbox[2:]):
         return [
             int(bbox[0] * 1000),
             int(bbox[1] * 1000),
@@ -86,11 +77,13 @@ def _parse_omni_response(raw: List[Dict], w: int, h: int) -> List[Dict[str, Any]
         bbox_raw = item.get("bbox", [0, 0, 0, 0])
         bbox = _normalize_bbox(bbox_raw, w, h)
 
+        interactable = bool(item.get("interactivity", item.get("interactable", True)))
         result.append({
-            "id": idx,
-            "bbox": bbox,
-            "label": str(content).strip(),
-            "type": elem_type,
+            "id":          idx,
+            "bbox":        bbox,
+            "label":       str(content).strip(),
+            "type":        elem_type,
+            "interactable": interactable,
         })
     return result
 
@@ -99,76 +92,67 @@ def _parse_omni_response(raw: List[Dict], w: int, h: int) -> List[Dict[str, Any]
 # HTTP 模式
 # ─────────────────────────────────────────────────────────────
 
+def _parse_omniparser_text(text: str) -> List[Dict[str, Any]]:
+    """解析 OmniParser 文本输出为结构化列表。
+
+    输出格式示例::
+
+        icon 0: {'type': 'icon', 'bbox': [0.1, 0.2, 0.3, 0.4], 'interactable': True, 'content': '设置', 'source': 'caption'}
+        icon 1: {'type': 'text', 'bbox': [...], ...}
+    """
+    items = []
+    for line in text.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        colon = line.find(": {")
+        if colon == -1:
+            continue
+        try:
+            d = ast.literal_eval(line[colon + 2:])
+            if isinstance(d, dict):
+                items.append(d)
+        except Exception:
+            pass
+    return items
+
+
 class _HttpBackend:
-    """通过 HTTP 调用独立运行的 OmniParser 服务。"""
+    """通过 gradio_client 调用 OmniParser Gradio 服务的 /process 端点。"""
 
     def __init__(self, endpoint: str, timeout: int) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from gradio_client import Client
+            self._client = Client(self.endpoint, verbose=False)
+        return self._client
 
     def call(self, image: Image.Image) -> List[Dict]:
-        import requests
-
-        buf = io.BytesIO()
-        image.save(buf, format="PNG")
-        img_b64 = base64.b64encode(buf.getvalue()).decode()
-
-        payload = {"image": img_b64}
-        resp = requests.post(
-            f"{self.endpoint}/process",
-            json=payload,
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        # 兼容两种响应结构
-        if isinstance(data, list):
-            return data
-        return data.get("parsed_content_list") or data.get("elements") or []
-
-
-# ─────────────────────────────────────────────────────────────
-# Local 模式
-# ─────────────────────────────────────────────────────────────
-
-class _LocalBackend:
-    """在当前进程直接加载 OmniParser V2 模型（需安装 omniparser）。"""
-
-    def __init__(self, model_path: str) -> None:
-        self.model_path = model_path
-        self._engine: Optional[Any] = None
-
-    def _load(self) -> None:
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp.close()  # Windows: must close before another process can write the same path
         try:
-            from omniparser import OmniParser  # type: ignore
-            self._engine = OmniParser(model_path=self.model_path)
-            logger.info("OmniParser V2 本地模型加载完成")
-        except ImportError as exc:
-            raise ImportError(
-                "本地模式需要安装 omniparser 包。\n"
-                "请参考 https://github.com/microsoft/OmniParser 安装，\n"
-                "或改用 HTTP 模式（OMNI_MODE=http）。"
-            ) from exc
+            image.save(tmp.name)
+            from gradio_client import handle_file
+            result = self._get_client().predict(
+                image_input=handle_file(tmp.name),
+                box_threshold=0.05,
+                iou_threshold=0.1,
+                use_paddleocr=False,  # PaddleOCR 在 Windows OneDNN 上崩溃，改用 EasyOCR
+                imgsz=640,
+                api_name="/process",
+            )
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
 
-    def call(self, image: Image.Image) -> List[Dict]:
-        if self._engine is None:
-            self._load()
-        raw = self._engine.parse(image)
-        if isinstance(raw, dict):
-            return raw.get("parsed_content_list") or raw.get("elements") or []
-        return raw or []
-
-    def teardown(self) -> None:
-        self._engine = None
-        try:
-            import torch
-            import gc
-            gc.collect()
-            torch.cuda.empty_cache()
-            logger.info("OmniParser GPU 显存已释放")
-        except Exception:
-            pass
+        _, text = result
+        return _parse_omniparser_text(text)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -179,24 +163,16 @@ class Provider(VisionProvider):
     """OmniParser V2 视觉 Provider。
 
     Args:
-        mode:       "local"（默认）或 "http"。
-        endpoint:   HTTP 模式下的服务地址，默认 http://127.0.0.1:7861。
-        timeout:    HTTP 请求超时（秒），默认 30。
-        model_path: Local 模式下的权重父目录，默认 "models/omni/OmniParser/weights"。
+        endpoint: OmniParser 服务地址，默认 http://127.0.0.1:7861。
+        timeout:  HTTP 请求超时（秒），默认 30。
     """
 
     def __init__(
         self,
-        mode: str = "local",
         endpoint: str = "http://127.0.0.1:7861",
         timeout: int = 30,
-        model_path: str = "models/omni/OmniParser/weights",
     ) -> None:
-        self.mode = mode
-        if mode == "local":
-            self._backend: _HttpBackend | _LocalBackend = _LocalBackend(model_path)
-        else:
-            self._backend = _HttpBackend(endpoint, timeout)
+        self._backend = _HttpBackend(endpoint, timeout)
 
     def detect(self, image: Image.Image) -> List[Dict[str, Any]]:
         w, h = image.size
@@ -219,22 +195,15 @@ class Provider(VisionProvider):
             pass
 
     def teardown(self) -> None:
-        if isinstance(self._backend, _LocalBackend):
-            self._backend.teardown()
+        pass
 
     @classmethod
     def from_config(cls, config: "AgentConfig") -> "Provider":
-        import os
-        mode = os.getenv("OMNI_MODE", "local")
         return cls(
-            mode=mode,
-            endpoint=config.omni_endpoint,
-            timeout=config.omni_timeout,
-            model_path=config.omni_model_path,
+            endpoint=config.vision.omni_endpoint,
+            timeout=config.vision.omni_timeout,
         )
 
     def __repr__(self) -> str:
-        if self.mode == "http":
-            ep = getattr(self._backend, "endpoint", "")
-            return f"OmniV2Provider(mode=http, endpoint={ep!r})"
-        return f"OmniV2Provider(mode=local)"
+        ep = getattr(self._backend, "endpoint", "")
+        return f"OmniV2Provider(endpoint={ep!r})"

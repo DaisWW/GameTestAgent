@@ -1,8 +1,11 @@
+import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
+
+_logger = logging.getLogger("tools")
 
 
 def configure_stdout() -> None:
@@ -13,19 +16,19 @@ def configure_stdout() -> None:
 
 
 def info(msg: str) -> None:
-    print(f"[INFO] {msg}", flush=True)
+    _logger.info(msg)
 
 
 def ok(msg: str) -> None:
-    print(f"[ OK ] {msg}", flush=True)
+    _logger.info("[ OK ] %s", msg)
 
 
 def warn(msg: str) -> None:
-    print(f"[WARN] {msg}", flush=True)
+    _logger.warning(msg)
 
 
 def err(msg: str) -> None:
-    print(f"[ERR ] {msg}", file=sys.stderr, flush=True)
+    _logger.error(msg)
 
 
 @dataclass
