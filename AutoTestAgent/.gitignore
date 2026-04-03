@@ -31,9 +31,13 @@ data/screenshots/*.jpg
 !data/logs/.gitkeep
 !data/screenshots/.gitkeep
 
-# ── 本地模型权重（体积大，不入仓）──────────────────────────
-models/
-!models/.gitkeep
+# ── 本地模型权重（体积大，不入仓）──────────────────
+models/**/OmniParser/
+models/**/weights/
+models/**/*.pth
+models/**/*.pt
+models/**/*.safetensors
+models/**/*.bin
 OmniParser/*.pth
 
 # ── IDE ───────────────────────────────────────────────────────

@@ -5,13 +5,13 @@ from __future__ import annotations
 支持两种运行模式（通过 mode 参数切换）：
 
 1. **local**（默认）
-   直接在当前进程加载 OmniParser 模型（需运行 scripts/omniparser.bat 下载权重）。
+   直接在当前进程加载 OmniParser 模型（需运行 models/omni/omniparser.bat 下载权重）。
    适合单机一体化部署，零额外进程。
-   配置：OMNI_MODE=local  OMNI_MODEL_PATH=scripts/OmniParser/weights
+   配置：OMNI_MODE=local  OMNI_MODEL_PATH=models/omni/OmniParser/weights
 
 2. **http**
    在本机或远端另起 OmniParser 服务：
-       python scripts/omniparser.py
+       python models/omni/omniparser.py
    本 Provider 通过 HTTP 调用，完全不占用当前进程显存。
    配置：OMNI_MODE=http  OMNI_ENDPOINT=http://127.0.0.1:7861
 """
@@ -182,7 +182,7 @@ class Provider(VisionProvider):
         mode:       "local"（默认）或 "http"。
         endpoint:   HTTP 模式下的服务地址，默认 http://127.0.0.1:7861。
         timeout:    HTTP 请求超时（秒），默认 30。
-        model_path: Local 模式下的权重父目录，默认 "scripts/OmniParser/weights"。
+        model_path: Local 模式下的权重父目录，默认 "models/omni/OmniParser/weights"。
     """
 
     def __init__(
@@ -190,7 +190,7 @@ class Provider(VisionProvider):
         mode: str = "local",
         endpoint: str = "http://127.0.0.1:7861",
         timeout: int = 30,
-        model_path: str = "scripts/OmniParser/weights",
+        model_path: str = "models/omni/OmniParser/weights",
     ) -> None:
         self.mode = mode
         if mode == "local":

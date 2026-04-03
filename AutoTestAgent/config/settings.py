@@ -19,7 +19,7 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
         vision_type=os.getenv("VISION_TYPE", "omni_v2"),
         omni_endpoint=os.getenv("OMNI_ENDPOINT", "http://127.0.0.1:7861"),
         omni_timeout=int(os.getenv("OMNI_TIMEOUT", "30")),
-        omni_model_path=os.getenv("OMNI_MODEL_PATH", "scripts/OmniParser/weights"),
+        omni_model_path=os.getenv("OMNI_MODEL_PATH", "models/omni/OmniParser/weights"),
         # ── LLM ─────────────────────────────────────────────────────
         llm_provider=os.getenv("LLM_PROVIDER", "openai"),
         api_key=os.getenv("LLM_API_KEY", ""),
@@ -51,7 +51,7 @@ class AgentConfig:
     """OmniParser V2 服务地址（HTTP 模式）"""
     omni_timeout: int = 30
     """HTTP 请求超时（秒）"""
-    omni_model_path: str = "scripts/OmniParser/weights"
+    omni_model_path: str = "models/omni/OmniParser/weights"
     """Local 模式下的模型权重目录（icon_caption / icon_detect 的父目录）"""
 
     # ── LLM provider ────────────────────────────────────────────────

@@ -54,6 +54,14 @@ AutoTestAgent/
 │   ├── screenshots/               # 步骤截图
 │   └── logs/                      # experience.db + nav_graph.json
 │
+├── models/                        # 本地模型服务（按模型分子目录）
+│   └── omni/                      # OmniParser V2（安装+启动）
+│       ├── omniparser.py          # 安装+启动一体化脚本
+│       ├── omniparser.bat         # Windows 启动器
+│       ├── omniparser.sh          # Linux/Mac 启动器
+│       ├── OmniParser/            # git clone（gitignored）
+│       └── weights/               # 模型权重（gitignored）
+│
 ├── memory/                        # shim → core/memory/（向后兼容）
 ├── context/                       # shim → core/context/（向后兼容）
 ├── graph/                         # shim → workflows/（向后兼容）
@@ -183,11 +191,16 @@ LLM_API_KEY=sk-your-key
 GAME_PACKAGE=com.your.game
 ```
 
-### 3. 启动 OmniParser V2（HTTP 模式）
+### 3. 启动 OmniParser V2
 
+```bat
+# Windows（首次自动安装，后续直接启动）
+models\omni\omniparser.bat
+```
 ```bash
-cd OmniParser
-python gradio_demo.py   # 默认监听 127.0.0.1:7861
+# Linux/Mac
+bash models/omni/omniparser.sh
+# 服务地址: http://127.0.0.1:7861
 ```
 
 ### 4. 运行测试
