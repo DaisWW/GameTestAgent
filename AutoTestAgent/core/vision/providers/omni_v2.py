@@ -193,21 +193,21 @@ class _HttpBackend:
                         imgsz=self.imgsz,
                         api_name="/process",
                     )
-                    break
                 except Exception as exc:
                     if use_ocr:
                         logger.warning("PaddleOCR 调用失败，自动降级为 EasyOCR: %s", exc)
-                        self.use_paddleocr = False  # 本次运行后续不再尝试
+                        self.use_paddleocr = False
                         continue
                     raise
-                # Gradio 可能返回 None（服务端静默崩溃），视为失败
-                if result is None or not hasattr(result, "__iter__"):
-                    if use_ocr:
-                        logger.warning("PaddleOCR 返回 None，自动降级为 EasyOCR")
-                        self.use_paddleocr = False
-                        result = None
-                        continue
-                    raise RuntimeError("OmniParser 返回空结果")
+                else:
+                    # Gradio 可能返回 None（服务端 PaddleOCR 静默崩溃）
+                    if result is None or not hasattr(result, "__iter__"):
+                        if use_ocr:
+                            logger.warning("PaddleOCR 返回 None，自动降级为 EasyOCR")
+                            self.use_paddleocr = False
+                            continue
+                        raise RuntimeError("OmniParser 返回空结果")
+                    break  # 正常结果，退出重试循环
         finally:
             try:
                 os.unlink(tmp.name)

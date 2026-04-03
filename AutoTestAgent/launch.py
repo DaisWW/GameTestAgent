@@ -109,6 +109,9 @@ def main() -> int:
             if omni_proc is None:
                 return 1
 
+    elif vision == VisionType.GROUNDING_DINO:
+        print("[→] Grounding DINO 模式：模型将在首次检测时进程内加载（无需外部服务）", flush=True)
+
     # ── 启动 Agent ───────────────────────────────────
     import main as agent_main  # noqa: PLC0415
     result = agent_main.main()

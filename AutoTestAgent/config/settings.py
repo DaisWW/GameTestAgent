@@ -30,6 +30,10 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
             omni_timeout=int(os.getenv("OMNI_TIMEOUT", "30")),
             omni_imgsz=int(os.getenv("OMNI_IMGSZ", "1280")),
             omni_use_paddleocr=os.getenv("OMNI_USE_PADDLEOCR", "false").lower() == "true",
+            gdino_model=os.getenv("GDINO_MODEL", "IDEA-Research/grounding-dino-tiny"),
+            gdino_text_prompt=os.getenv("GDINO_TEXT_PROMPT", "button . icon . close . back . text . input ."),
+            gdino_box_threshold=float(os.getenv("GDINO_BOX_THRESHOLD", "0.25")),
+            gdino_text_threshold=float(os.getenv("GDINO_TEXT_THRESHOLD", "0.25")),
         ),
         llm=LLMConfig(
             provider=os.getenv("LLM_PROVIDER", "openai"),
@@ -72,7 +76,7 @@ class VisionConfig:
     """视觉层配置。"""
 
     vision_type: str = "omni_v2"
-    """可选值: omni_v2 | mock | paddle_ocr (未来扩展)"""
+    """可选值: omni_v2 | grounding_dino | mock"""
     omni_endpoint: str = "http://127.0.0.1:7861"
     """OmniParser 服务地址"""
     omni_timeout: int = 30
@@ -81,6 +85,14 @@ class VisionConfig:
     """OmniParser YOLO 输入分辨率（640→1280 可检出更小元素，如游戏世界空间标签）"""
     omni_use_paddleocr: bool = False
     """启用 PaddleOCR（中文识别更优，Windows OneDNN 下可能崩溃）"""
+    gdino_model: str = "IDEA-Research/grounding-dino-tiny"
+    """Grounding DINO 模型 ID（本地缓存优先，否则从 HuggingFace 下载）"""
+    gdino_text_prompt: str = "button . icon . close . back . text . input ."
+    """Grounding DINO 检测提示词，以 " . " 分隔各类别"""
+    gdino_box_threshold: float = 0.25
+    """Grounding DINO bbox 置信度阈值"""
+    gdino_text_threshold: float = 0.25
+    """Grounding DINO 文本匹配阈值"""
 
 
 @dataclass

@@ -20,7 +20,11 @@ import sys
 import time
 from pathlib import Path
 
-# ── 确保能 import OmniParser 的 util ──────────────────────────
+# ── 禁用 OneDNN（解决 Windows 上 PaddleOCR 崩溃）────────────
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
+os.environ.setdefault("FLAGS_use_gpu", "0")
+
+# ── 确保能 import OmniParser 的 util ──────────────────────
 _OMNI = Path(__file__).parent / "OmniParser"
 if str(_OMNI) not in sys.path:
     sys.path.insert(0, str(_OMNI))
@@ -95,12 +99,18 @@ def _test_easyocr(img_path: str, langs: list[str], label: str):
         status = "✓" if any(ch in text for ch in "游戏设置退出确认购买返回等级") or text.strip() in [t.strip() for t in _TEST_TEXTS] else "?"
         print(f"  [{i:2d}] conf={conf:.2f}  {status}  \"{text}\"")
 
-    # 统计中文识别命中
+    # 统计命中（严格匹配：识别结果必须包含期望文本的至少 60% 字符）
     recognized = set()
     for _, text, _ in results:
+        text_clean = text.strip()
         for expected in _TEST_TEXTS:
-            if expected in text or text in expected:
+            # 英文匹配忽略大小写，中文精确匹配
+            if expected.lower() == text_clean.lower():
                 recognized.add(expected)
+            elif len(expected) >= 2:
+                matched_chars = sum(1 for c in expected if c in text_clean)
+                if matched_chars / len(expected) >= 0.6:
+                    recognized.add(expected)
     hit = len(recognized)
     total = len(_TEST_TEXTS)
     print(f"\n  命中: {hit}/{total}  ({hit/total*100:.0f}%)")
@@ -143,10 +153,14 @@ def _test_paddleocr(img_path: str, lang: str, label: str):
 
     recognized = set()
     for item in result:
-        text = item[1][0]
+        text_clean = item[1][0].strip()
         for expected in _TEST_TEXTS:
-            if expected in text or text in expected:
+            if expected.lower() == text_clean.lower():
                 recognized.add(expected)
+            elif len(expected) >= 2:
+                matched_chars = sum(1 for c in expected if c in text_clean)
+                if matched_chars / len(expected) >= 0.6:
+                    recognized.add(expected)
     hit = len(recognized)
     total = len(_TEST_TEXTS)
     print(f"\n  命中: {hit}/{total}  ({hit/total*100:.0f}%)")

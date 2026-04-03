@@ -52,7 +52,7 @@ class TestStatus(StrEnum):
 
 
 class ElementType(StrEnum):
-    """OmniParser 返回的 UI 元素类型。"""
+    """视觉 Provider 返回的 UI 元素类型。"""
 
     BUTTON  = "button"
     ICON    = "icon"
@@ -73,8 +73,9 @@ class LLMProvider(StrEnum):
 class VisionType(StrEnum):
     """视觉 Provider 标识，与 .env VISION_TYPE 值对应。"""
 
-    OMNI_V2 = "omni_v2"
-    MOCK    = "mock"
+    OMNI_V2        = "omni_v2"
+    GROUNDING_DINO = "grounding_dino"
+    MOCK           = "mock"
 
 
 class SwipeDirection(StrEnum):
