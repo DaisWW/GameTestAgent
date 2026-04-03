@@ -12,6 +12,7 @@ from typing import List, Set, Tuple, TYPE_CHECKING
 
 from .checkers import get_enabled_checkers
 from .checkers.base import BugChecker, BugReport
+from core.types import BugSeverity
 
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
@@ -26,8 +27,7 @@ def _save_bug_screenshot(state: dict, worker: "LangGraphWorker", bug: BugReport)
     if not page_hash or screenshot is None:
         return ""
     shot_path = os.path.join(
-        state.get("memory_dir", worker.config.memory_dir),
-        "screenshots",
+        state.get("run_dir", worker.config.run_dir),
         f"bug_{bug.category}_{page_hash[:8]}_step{state.get('step', 0):03d}.png",
     )
     os.makedirs(os.path.dirname(shot_path), exist_ok=True)
@@ -102,15 +102,12 @@ def make_node(worker: "LangGraphWorker"):
                     step, len(all_bugs), len(new_bugs))
 
         # ── 统一持久化（仅新增 Bug）──────────────────────────────
-        shot_path = ""
-        if new_bugs:
-            shot_path = _save_bug_screenshot(state, worker, new_bugs[0])
-
         for bug in new_bugs:
+            shot_path = _save_bug_screenshot(state, worker, bug)
             _persist_bug(bug, shot_path, state, worker)
 
         # ── critical 级别触发恢复 ───────────────────────────────
-        critical_bugs = [b for b in all_bugs if b.severity == "critical"]
+        critical_bugs = [b for b in all_bugs if b.severity == BugSeverity.CRITICAL]
         if critical_bugs:
             reason = critical_bugs[0].description
             logger.error("[CHECK] 发现 critical 级 Bug，触发恢复: %s", reason[:80])

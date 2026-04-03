@@ -18,15 +18,16 @@ from typing import Any, Dict, List, Optional
 from PIL import Image
 
 from ..base import VisionProvider
+from core.types import ElementType
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ELEMENTS: List[Dict[str, Any]] = [
-    {"id": 0, "bbox": [50,  100, 300, 150], "label": "开始游戏", "type": "button"},
-    {"id": 1, "bbox": [50,  200, 300, 250], "label": "设置",     "type": "button"},
-    {"id": 2, "bbox": [50,  300, 300, 350], "label": "退出",     "type": "button"},
-    {"id": 3, "bbox": [100, 450, 900, 500], "label": "玩家名称", "type": "input"},
-    {"id": 4, "bbox": [350,  20, 650,  80], "label": "游戏标题", "type": "text"},
+    {"id": 0, "bbox": [50,  100, 300, 150], "label": "开始游戏", "type": ElementType.BUTTON},
+    {"id": 1, "bbox": [50,  200, 300, 250], "label": "设置",     "type": ElementType.BUTTON},
+    {"id": 2, "bbox": [50,  300, 300, 350], "label": "退出",     "type": ElementType.BUTTON},
+    {"id": 3, "bbox": [100, 450, 900, 500], "label": "玩家名称", "type": ElementType.INPUT},
+    {"id": 4, "bbox": [350,  20, 650,  80], "label": "游戏标题", "type": ElementType.TEXT},
 ]
 
 

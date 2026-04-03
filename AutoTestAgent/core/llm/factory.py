@@ -18,6 +18,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from langchain_core.language_models import BaseChatModel
+from core.types import LLMProvider
 
 if TYPE_CHECKING:
     from config.settings import AgentConfig, LLMConfig
@@ -90,7 +91,7 @@ def _make_google(cfg: "LLMConfig") -> BaseChatModel:
 # ── 注册表（provider name → 构造函数）────────────────────────────
 
 _MAKERS = {
-    "openai":    _make_openai,
-    "anthropic": _make_anthropic,
-    "google":    _make_google,
+    LLMProvider.OPENAI:    _make_openai,
+    LLMProvider.ANTHROPIC: _make_anthropic,
+    LLMProvider.GOOGLE:    _make_google,
 }

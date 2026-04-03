@@ -17,6 +17,8 @@ import json
 import sys
 from pathlib import Path
 
+from core.types import ActionType
+
 
 def _load_graph(graph_path: str):
     import networkx as nx
@@ -88,7 +90,7 @@ def render(graph_path: str, screenshots_dir: str | None, out_path: str) -> None:
     edge_labels = {}
     for u, v, data in g.edges(data=True):
         lbl = data.get("label") or ""
-        action = data.get("action", "tap")
+        action = data.get("action", ActionType.TAP)
         edge_labels[(u, v)] = f"{action}:{lbl}" if lbl else action
 
     # ── 画布：按节点数自适应大小 ─────────────────────────────────

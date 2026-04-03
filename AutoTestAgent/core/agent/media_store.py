@@ -2,10 +2,10 @@ from __future__ import annotations
 
 """MediaStore：截图持久化管理。
 
-将每步截图写入 runs/<run_id>/，将页面截图按 hash 写入 memory/screenshots/。
-两类截图生命周期不同：
-- 步骤截图：每次 run 独立，供问题复现
-- 页面截图：跨 run 共享，供导航图关联
+所有截图统一写入 runs/<run_id>/，不写入 memory/：
+- 步骤截图：step_NNN.png，供问题复现
+- 页面截图：page_{hash}.png，按 hash 去重
+- 标注截图：step_NNN_annotated.png，带 UI 元素 bbox
 """
 
 import logging
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PIL import Image
+from core.types import ElementType
 
 if TYPE_CHECKING:
     from config.settings import AgentConfig
@@ -23,10 +24,17 @@ logger = logging.getLogger(__name__)
 class MediaStore:
     """负责两类截图的落盘，与业务逻辑解耦。"""
 
+    _TYPE_COLOR = {
+        ElementType.BUTTON:  "#FF4444",
+        ElementType.ICON:    "#4488FF",
+        ElementType.TEXT:    "#44BB44",
+        ElementType.INPUT:   "#FF9900",
+        ElementType.UNKNOWN: "#AAAAAA",
+    }
+
     def __init__(self, config: "AgentConfig") -> None:
         self._enabled = config.output.save_screenshots
-        self._run_dir    = Path(config.run_dir)
-        self._memory_dir = Path(config.memory_dir)
+        self._run_dir  = Path(config.run_dir)
 
     def save_step(self, image: Image.Image, step: int) -> str:
         """将步骤截图保存到 runs/<run_id>/step_NNN.png。
@@ -42,18 +50,35 @@ class MediaStore:
         return str(path)
 
     def save_page(self, image: Image.Image, page_hash: str) -> str:
-        """将页面截图按 hash 保存到 memory/screenshots/，已存在则跳过。
+        """将页面截图保存到 runs/<run_id>/page_{hash}.png（不再写入 memory）。
 
         Returns: 保存路径，未启用时返回 ""。
         """
         if not self._enabled:
             return ""
-        path = self._memory_dir / "screenshots" / f"{page_hash}.png"
+        path = self._run_dir / f"page_{page_hash[:8]}.png"
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             image.save(str(path))
             logger.debug("页面截图: %s", path)
         return str(path)
+
+    def save_page_annotated(
+        self,
+        image: Image.Image,
+        ui_elements: list,
+        page_hash: str,
+    ) -> str:
+        """将带标注的截图保存为 page_{hash}_annotated.png（按 hash 去重，调试用）。
+
+        Returns: 保存路径，未启用时或已存在时返回 ""。
+        """
+        if not self._enabled:
+            return ""
+        path = self._run_dir / f"page_{page_hash[:8]}_annotated.png"
+        if path.exists():
+            return str(path)
+        return self._draw_annotated(image, ui_elements, path)
 
     def save_annotated(
         self,
@@ -70,20 +95,17 @@ class MediaStore:
         """
         if not self._enabled:
             return ""
+        path = self._run_dir / f"step_{step:03d}_annotated.png"
+        return self._draw_annotated(image, ui_elements, path)
+
+    def _draw_annotated(self, image: Image.Image, ui_elements: list, path: Path) -> str:
+        """公共绘制逻辑：在 image 副本上绘制 bbox/label，保存到 path。"""
         from PIL import ImageDraw, ImageFont
 
-        _TYPE_COLOR = {
-            "button":  "#FF4444",
-            "icon":    "#4488FF",
-            "text":    "#44BB44",
-            "input":   "#FF9900",
-            "unknown": "#AAAAAA",
-        }
-
-        w, h   = image.size
-        canvas = image.copy().convert("RGBA")
+        w, h    = image.size
+        canvas  = image.copy().convert("RGBA")
         overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-        draw   = ImageDraw.Draw(overlay)
+        draw    = ImageDraw.Draw(overlay)
 
         try:
             font = ImageFont.truetype("arial.ttf", max(12, w // 80))
@@ -95,7 +117,7 @@ class MediaStore:
             eid   = elem.get("id", "?")
             label = elem.get("label", "")[:20]
             etype = elem.get("type", "unknown")
-            color = _TYPE_COLOR.get(etype, "#AAAAAA")
+            color = self._TYPE_COLOR.get(etype, "#AAAAAA")
 
             x1 = int(bbox[0] / 1000 * w)
             y1 = int(bbox[1] / 1000 * h)
@@ -109,7 +131,6 @@ class MediaStore:
                 draw.text((x1 + 2, y2 + 2), label, fill=color + "FF", font=font)
 
         result = Image.alpha_composite(canvas, overlay).convert("RGB")
-        path   = self._run_dir / f"step_{step:03d}_annotated.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         result.save(str(path))
         logger.debug("标注截图已保存: %s", path)

@@ -115,7 +115,7 @@ class MemoryManager:
         """将成功路径保存到 ExperiencePool。"""
         self.experience.save_successful_path(
             task=task,
-            steps=self.working.recent(n=steps),
+            steps=[s.to_dict() for s in self.working.recent(n=steps)],
             page_hashes=self.working.page_hash_sequence(),
         )
 

@@ -18,6 +18,8 @@ ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
 from tools.core import configure_stdout
+from core.types import TestStatus
+from core.models import RunResult
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -112,21 +114,21 @@ def main() -> int:
 
     # ── 输出结果 ─────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print(f"  测试结果  : {result['status'].upper()}")
-    print(f"  执行步数  : {result['steps']}")
-    if result["status"] != "pass":
-        print(f"  结束原因  : {result['reason'] or '未知'}")
+    print(f"  测试结果  : {result.status.upper()}")
+    print(f"  执行步数  : {result.steps}")
+    if result.status != TestStatus.PASS:
+        print(f"  结束原因  : {result.reason or '未知'}")
     print("=" * 60)
 
-    if result.get("history"):
+    if result.history:
         print("\n  执行历史：")
-        for entry in result["history"]:
-            print(f"    [{entry['step']:02d}] {entry['action']:12s} {entry['params']}  — {entry['reasoning'][:50]}")
+        for s in result.history:
+            print(f"    [{s.step:02d}] {s.action:12s} {s.params}  — {s.reasoning[:50]}")
 
     # ── 清理资源 ─────────────────────────────────────────────────
     worker.teardown()
 
-    return 0 if result["status"] == "pass" else 1
+    return 0 if result.passed else 1
 
 
 if __name__ == "__main__":

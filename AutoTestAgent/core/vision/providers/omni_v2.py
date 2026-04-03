@@ -10,22 +10,24 @@ from __future__ import annotations
 import ast
 import logging
 import os
+import re
 import tempfile
 from typing import Any, Dict, List
 
 from PIL import Image
 
 from ..base import VisionProvider
+from core.types import ElementType
 
 logger = logging.getLogger(__name__)
 
 _LABEL_MAP = {
-    "icon": "icon",
-    "text": "text",
-    "button": "button",
-    "input": "input",
-    "checkbox": "input",
-    "radio": "input",
+    "icon":     ElementType.ICON,
+    "text":     ElementType.TEXT,
+    "button":   ElementType.BUTTON,
+    "input":    ElementType.INPUT,
+    "checkbox": ElementType.INPUT,
+    "radio":    ElementType.INPUT,
 }
 
 
@@ -71,8 +73,8 @@ def _parse_omni_response(raw: List[Dict], w: int, h: int) -> List[Dict[str, Any]
     result = []
     for idx, item in enumerate(raw):
         content = item.get("content") or item.get("label") or item.get("text") or ""
-        raw_type = item.get("type", "unknown").lower()
-        elem_type = _LABEL_MAP.get(raw_type, "unknown")
+        raw_type = (item.get("type") or ElementType.UNKNOWN).lower()
+        elem_type = _LABEL_MAP.get(raw_type, ElementType.UNKNOWN)
 
         bbox_raw = item.get("bbox", [0, 0, 0, 0])
         bbox = _normalize_bbox(bbox_raw, w, h)
@@ -117,12 +119,32 @@ def _parse_omniparser_text(text: str) -> List[Dict[str, Any]]:
     return items
 
 
+# 过滤 Unity 调试叠层元素（FPS 计数器、Development Build 等无意义展示）
+_DEBUG_LABEL_RE = re.compile(
+    r'(\bfps\b|\bms\b.*(\bms\b|\d+\.)|\.\d+\s*ms|development\s*build)',
+    re.IGNORECASE,
+)
+
+
+def _filter_debug_elements(elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Discard Unity runtime debug overlays (FPS counter, Development Build text)."""
+    filtered = []
+    for elem in elements:
+        label = elem.get("label", "")
+        if _DEBUG_LABEL_RE.search(label):
+            logger.debug("过滤调试叠层元素: %r", label)
+            continue
+        filtered.append(elem)
+    return filtered
+
+
 class _HttpBackend:
     """通过 gradio_client 调用 OmniParser Gradio 服务的 /process 端点。"""
 
-    def __init__(self, endpoint: str, timeout: int) -> None:
+    def __init__(self, endpoint: str, timeout: int, imgsz: int = 1280) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
+        self.imgsz = imgsz
         self._client = None
 
     def _get_client(self):
@@ -142,7 +164,7 @@ class _HttpBackend:
                 box_threshold=0.05,
                 iou_threshold=0.1,
                 use_paddleocr=False,  # PaddleOCR 在 Windows OneDNN 上崩溃，改用 EasyOCR
-                imgsz=640,
+                imgsz=self.imgsz,
                 api_name="/process",
             )
         finally:
@@ -171,8 +193,9 @@ class Provider(VisionProvider):
         self,
         endpoint: str = "http://127.0.0.1:7861",
         timeout: int = 30,
+        imgsz: int = 1280,
     ) -> None:
-        self._backend = _HttpBackend(endpoint, timeout)
+        self._backend = _HttpBackend(endpoint, timeout, imgsz=imgsz)
 
     def detect(self, image: Image.Image) -> List[Dict[str, Any]]:
         w, h = image.size
@@ -183,6 +206,10 @@ class Provider(VisionProvider):
             raise RuntimeError(f"OmniParser 检测失败: {exc}") from exc
 
         elements = _parse_omni_response(raw, w, h)
+        before = len(elements)
+        elements = _filter_debug_elements(elements)
+        if before != len(elements):
+            logger.debug("过滤调试叠层: %d → %d 个元素", before, len(elements))
         logger.debug("OmniParser 检测到 %d 个元素", len(elements))
         return elements
 
@@ -202,6 +229,7 @@ class Provider(VisionProvider):
         return cls(
             endpoint=config.vision.omni_endpoint,
             timeout=config.vision.omni_timeout,
+            imgsz=config.vision.omni_imgsz,
         )
 
     def __repr__(self) -> str:

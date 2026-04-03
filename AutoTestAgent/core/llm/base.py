@@ -7,7 +7,7 @@ from __future__ import annotations
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.context.protocol import ContextPacket
@@ -30,3 +30,11 @@ class BrainProvider(ABC):
     @abstractmethod
     def ask(self, packet: "ContextPacket") -> Dict[str, Any]:
         """根据当前上下文包返回 ActionDecision 字典。"""
+
+    def ask_vision(self, image: Any, question: str) -> Optional[str]:
+        """可选：向视觉大模型提一个开放问题，返回文本响应。
+
+        不支持视觉问答的实现（如 SequentialDecider）直接返回 None；
+        LLMAdapter 会覆盖此方法以发起真实的多模态调用。
+        """
+        return None

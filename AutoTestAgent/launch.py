@@ -93,7 +93,8 @@ def main() -> int:
     # ── 判断是否需要自动启动 OmniParser ──────────
     omni_proc: subprocess.Popen | None = None
 
-    if vision == "omni_v2":
+    from core.types import VisionType  # noqa: PLC0415
+    if vision == VisionType.OMNI_V2:
         # 从 OMNI_ENDPOINT 提取端口，避免硬编码
         endpoint = cfg.get("OMNI_ENDPOINT", f"http://127.0.0.1:{_DEFAULT_OMNI_PORT}")
         try:

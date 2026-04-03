@@ -13,6 +13,7 @@ import re
 from typing import List, TYPE_CHECKING
 
 from .base import BugChecker, BugReport
+from core.types import BugCategory, BugSeverity, BugTag
 
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
@@ -65,12 +66,12 @@ class ContentChecker(BugChecker):
             for pat in _PLACEHOLDER_PATTERNS:
                 if re.search(pat, label_lower):
                     bugs.append(BugReport(
-                        category="content",
-                        severity="minor",
+                        category=BugCategory.CONTENT,
+                        severity=BugSeverity.MINOR,
                         description=(
                             f"疑似占位符泄露: [{e['id']}] \"{label}\""
                         ),
-                        tags=["placeholder"],
+                        tags=[BugTag.PLACEHOLDER],
                         evidence={"element": e, "pattern": pat},
                     ))
                     break  # 一个元素只报一次占位符
@@ -78,24 +79,24 @@ class ContentChecker(BugChecker):
             # ── 未翻译 key 检测 ─────────────────────────────────
             if _I18N_KEY_PATTERN.match(label_lower):
                 bugs.append(BugReport(
-                    category="content",
-                    severity="minor",
+                    category=BugCategory.CONTENT,
+                    severity=BugSeverity.MINOR,
                     description=(
                         f"疑似未翻译的 i18n key: [{e['id']}] \"{label}\""
                     ),
-                    tags=["untranslated_key"],
+                    tags=[BugTag.UNTRANSLATED_KEY],
                     evidence={"element": e},
                 ))
 
             # ── 乱码检测 ────────────────────────────────────────
             if _GARBLED_PATTERN.search(label):
                 bugs.append(BugReport(
-                    category="content",
-                    severity="major",
+                    category=BugCategory.CONTENT,
+                    severity=BugSeverity.MAJOR,
                     description=(
                         f"疑似乱码: [{e['id']}] \"{label[:30]}\""
                     ),
-                    tags=["garbled_text"],
+                    tags=[BugTag.GARBLED_TEXT],
                     evidence={"element": e},
                 ))
 

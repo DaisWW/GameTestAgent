@@ -59,9 +59,13 @@ class WorkingMemory:
     def steps(self) -> List[MemoryStep]:
         return list(self._steps)
 
-    def recent(self, n: int = 5) -> List[Dict[str, Any]]:
+    def recent(self, n: int = 5) -> List[MemoryStep]:
         items = list(self._steps)
-        return [s.to_dict() for s in (items[-n:] if n > 0 else [])]
+        return items[-n:] if n > 0 else []
+
+    def recent_steps(self, n: int = 5) -> List[MemoryStep]:
+        """recent() 的具名别名，语义更明确。"""
+        return self.recent(n=n)
 
     def page_hash_sequence(self) -> List[str]:
         hashes = []

@@ -6,11 +6,12 @@ import pytest
 from core.memory.working_memory import WorkingMemory, MemoryStep
 from core.memory.nav_graph import NavigationGraph
 from core.memory.experience_pool import ExperiencePool
+from core.types import ActionType, BugTag, ElementType
 
 
 # ── WorkingMemory ─────────────────────────────────────────────
 
-def _make_step(step: int, action: str = "tap", page_hash: str = "aaaa",
+def _make_step(step: int, action: str = ActionType.TAP, page_hash: str = "aaaa",
                result_hash: str = "bbbb", success: bool = True) -> MemoryStep:
     return MemoryStep(
         step=step, action=action, params={"id": step},
@@ -45,8 +46,8 @@ def test_working_memory_stale_click():
 
 def test_nav_graph_register_and_visit():
     ng = NavigationGraph()
-    elements = [{"id": 1, "bbox": [0,0,100,50], "label": "btn1", "type": "button"},
-                {"id": 2, "bbox": [0,60,100,110], "label": "btn2", "type": "button"}]
+    elements = [{"id": 1, "bbox": [0,0,100,50], "label": "btn1", "type": ElementType.BUTTON},
+                {"id": 2, "bbox": [0,60,100,110], "label": "btn2", "type": ElementType.BUTTON}]
     ng.register_page("page_A", elements=elements)
     ng.mark_visited("page_A", 1)
     assert ng.get_visited_ids("page_A") == [1]
@@ -57,10 +58,10 @@ def test_nav_graph_transition():
     ng = NavigationGraph()
     ng.register_page("page_A")
     ng.register_page("page_B")
-    ng.add_transition("page_A", "page_B", action="tap", element_id=1)
+    ng.add_transition("page_A", "page_B", action=ActionType.TAP, element_id=1)
     stats = ng.stats()
-    assert stats["pages"] == 2
-    assert stats["transitions"] == 1
+    assert stats.pages == 2
+    assert stats.transitions == 1
 
 
 def test_nav_graph_aba_loop_detection():
@@ -77,14 +78,14 @@ def test_nav_graph_save_load(tmp_path):
     ng = NavigationGraph(graph_path=path)
     ng.register_page("p1")
     ng.register_page("p2")
-    ng.add_transition("p1", "p2", action="tap", element_id=0)
+    ng.add_transition("p1", "p2", action=ActionType.TAP, element_id=0)
     ng.mark_visited("p1", 0)
     ng.save_json()
 
     ng2 = NavigationGraph(graph_path=path)
-    assert ng2.stats()["pages"] == 2
-    assert ng2.stats()["transitions"] == 1
-    assert ng2.get_visited_ids("p1") == [0]
+    assert ng2.stats().pages == 2
+    assert ng2.stats().transitions == 1
+    assert ng2.get_visited_ids("p1") == []  # visited_map 不跨 run 持久化
 
 
 # ── ExperiencePool ────────────────────────────────────────────
@@ -99,6 +100,6 @@ def test_experience_pool_in_memory():
 
 def test_experience_pool_bug_snapshot():
     ep = ExperiencePool(db_path=":memory:")
-    ep.save_bug("deadbeef", "游戏崩溃", tags=["crash"])
+    ep.save_bug("deadbeef", "游戏崩溃", tags=[BugTag.CRASH])
     desc = ep.is_known_bug_page("deadbeef")
     assert desc == "游戏崩溃"

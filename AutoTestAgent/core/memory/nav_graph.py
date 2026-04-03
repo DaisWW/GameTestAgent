@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from core.models import NavStats
+
 import networkx as nx
 
 logger = logging.getLogger(__name__)
@@ -81,6 +83,7 @@ class NavigationGraph:
             self._visited_map[page_hash] = set()
             logger.debug("注册新页面节点: %s", page_hash[:8])
         node = self._g.nodes[page_hash]
+        # setdefault 兼容 load_json 恢复的旧节点（可能缺少字段）
         node.setdefault("visit_count", 0)
         node.setdefault("elements", [])
         node["visit_count"] += 1
@@ -140,7 +143,11 @@ class NavigationGraph:
             child_unvisited = self.get_unvisited_ids(child_hash, child_all_ids)
             if child_unvisited:
                 elem_id = edge_data.get("element_id")
-                if elem_id is not None and elem_id not in hints:
+                if elem_id is None:
+                    continue
+                # 若该导航元素已在本页被标为已访问（尝试过但未成功进入子页），跳过
+                already_tried = elem_id in self._visited_map.get(page_hash, set())
+                if not already_tried and elem_id not in hints:
                     hints.append(elem_id)
         return hints
 
@@ -190,17 +197,17 @@ class NavigationGraph:
         tail = recent_hashes[-4:]
         return tail[0] == tail[2] and tail[1] == tail[3] and tail[0] != tail[1]
 
-    def stats(self) -> Dict[str, Any]:
-        return {
-            "pages":            self._g.number_of_nodes(),
-            "transitions":      self._g.number_of_edges(),
-            "visited_elements": sum(len(v) for v in self._visited_map.values()),
-        }
+    def stats(self) -> NavStats:
+        return NavStats(
+            pages            = self._g.number_of_nodes(),
+            transitions      = self._g.number_of_edges(),
+            visited_elements = sum(len(v) for v in self._visited_map.values()),
+        )
 
-    def full_stats(self) -> Dict[str, Any]:
+    def full_stats(self) -> NavStats:
         """含环检测的完整统计（较慢，仅在最终报告时调用）。"""
         s = self.stats()
-        s["cycles"] = len(self.find_simple_cycles())
+        s.cycles = len(self.find_simple_cycles())
         return s
 
     def save_json(self, path: Optional[str] = None) -> None:
@@ -210,7 +217,6 @@ class NavigationGraph:
         data = {
             "nodes": {n: self._g.nodes[n] for n in self._g.nodes},
             "edges": [{"from": u, "to": v, **self._g.edges[u, v]} for u, v in self._g.edges],
-            "visited_map": {k: sorted(v) for k, v in self._visited_map.items()},
         }
         Path(target).parent.mkdir(parents=True, exist_ok=True)
         Path(target).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -225,7 +231,8 @@ class NavigationGraph:
             u, v = edge["from"], edge["to"]
             attrs = {k: val for k, val in edge.items() if k not in ("from", "to")}
             self._g.add_edge(u, v, **attrs)
-        self._visited_map = {k: set(v) for k, v in raw.get("visited_map", {}).items()}
+        self._visited_map = {}  # visited_map 不跨 run 持久化，每次运行从空白开始
 
     def __repr__(self) -> str:
-        return f"NavigationGraph(pages={self._g.number_of_nodes()}, transitions={self._g.number_of_edges()}, visited_elements={sum(len(v) for v in self._visited_map.values())})"
+        s = self.stats()
+        return f"NavigationGraph(pages={s.pages}, transitions={s.transitions}, visited_elements={s.visited_elements})"

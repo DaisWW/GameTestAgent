@@ -44,9 +44,11 @@ def make_node(worker: "LangGraphWorker"):
         logger.info("  决策: action=%-12s params=%s", decision.get("action"), decision.get("params"))
         logger.info("  推理: %s", decision.get("reasoning", "")[:80])
 
+        raw_done = decision.get("done", False)
+        is_done  = raw_done is True or str(raw_done).lower() == "true"
         return {
             "current_action": decision,
-            "done":           bool(decision.get("done", False)),
+            "done":           is_done,
             "result":         decision.get("result", ""),
         }
 

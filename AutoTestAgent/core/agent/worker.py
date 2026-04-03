@@ -11,6 +11,7 @@ from __future__ import annotations
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PIL import Image
@@ -22,6 +23,8 @@ from core.vision.base import VisionProvider
 from core.memory.manager import MemoryManager
 from core.agent.media_store import MediaStore
 from core.reporting.writer import write_report
+from core.types import TestStatus
+from core.models import NavStats, RunResult
 from tools import ADBController, ADBError, RunnerSettings
 from core.agent.executor import ActionExecutor
 
@@ -108,6 +111,14 @@ class LangGraphWorker:
     def save_page_screenshot(self, image: Image.Image, page_hash: str, memory_dir: str = "") -> str:
         return self.media.save_page(image, page_hash)
 
+    def save_page_annotated_screenshot(
+        self,
+        image: Image.Image,
+        ui_elements: List[Dict[str, Any]],
+        page_hash: str,
+    ) -> str:
+        return self.media.save_page_annotated(image, ui_elements, page_hash)
+
     def save_annotated_screenshot(
         self,
         image: Image.Image,
@@ -119,23 +130,28 @@ class LangGraphWorker:
 
     # ── 主入口 ──────────────────────────────────────────────────────
 
-    def run(self, task: str) -> Dict[str, Any]:
+    def run(self, task: str) -> RunResult:
         """执行完整的测试任务。
 
         Args:
             task: 自然语言测试任务描述，例如 "进入设置页面并开启夜间模式"。
 
         Returns:
-            测试结果字典::
-
-                {
-                    "status":  "pass" | "fail" | "error",
-                    "steps":   12,
-                    "reason":  "...",
-                    "history": [...],
-                    "nav_stats": {...},
-                }
+            RunResult 包含 status / steps / reason / history / nav_stats /
+            bug_summary / bugs 字段，可通过属性直接访问。
         """
+        # ── 每轮独立日志文件 ──────────────────────────────────────
+        run_dir_path = Path(self.config.run_dir)
+        run_dir_path.mkdir(parents=True, exist_ok=True)
+        _fh = logging.FileHandler(run_dir_path / "run.log", encoding="utf-8")
+        _fh.setLevel(logging.DEBUG)
+        _fh.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        ))
+        _root_logger = logging.getLogger()
+        _root_logger.addHandler(_fh)
+
         logger.info("=" * 60)
         logger.info("开始测试任务: %s", task)
         logger.info("Vision: %r  LLM: %r", self.vision, self.llm)
@@ -167,71 +183,73 @@ class LangGraphWorker:
             "run_dir":        self.config.run_dir,
             "memory_dir":     self.config.memory_dir,
         }
-
         try:
-            final_state = dict(initial_state)
-            for event in graph.stream(initial_state, stream_mode="updates"):
-                node_name, node_state = next(iter(event.items()))
-                if node_state:
-                    final_state.update(node_state)
-                logger.info(
-                    ">>> [NODE] %-12s | step=%-3s done=%s result=%r",
-                    node_name,
-                    final_state.get("step", "?"),
-                    final_state.get("done", False),
-                    (final_state.get("result") or "")[:60],
-                )
-        except Exception as exc:
-            logger.error("Agent 执行异常: %s", exc, exc_info=True)
+            try:
+                final_state = dict(initial_state)
+                for event in graph.stream(initial_state, stream_mode="updates"):
+                    node_name, node_state = next(iter(event.items()))
+                    if node_state:
+                        final_state.update(node_state)
+                    logger.info(
+                        ">>> [NODE] %-12s | step=%-3s done=%s result=%r",
+                        node_name,
+                        final_state.get("step", "?"),
+                        final_state.get("done", False),
+                        (final_state.get("result") or "")[:60],
+                    )
+            except Exception as exc:
+                logger.error("Agent 执行异常: %s", exc, exc_info=True)
+                self.memory.persist()
+                return RunResult(status=TestStatus.ERROR, steps=0, reason=str(exc))
+
+            # ── 测试结束后持久化记忆 ──────────────────────────────
+            result_str = final_state.get("result", "")
+            is_pass    = result_str == TestStatus.PASS
+            steps      = final_state.get("step", 0)
+
+            if is_pass:
+                self.memory.save_successful_path(task=task, steps=steps)
+
             self.memory.persist()
-            return {"status": "error", "steps": 0, "reason": str(exc),
-                    "history": [], "nav_stats": {}, "bug_summary": {}, "bugs": []}
 
-        # ── 测试结束后持久化记忆 ──────────────────────────────────
-        result_str = final_state.get("result", "")
-        is_pass    = result_str == "pass"
-        steps      = final_state.get("step", 0)
+            nav_stats = self.memory.nav_graph.stats()
+            logger.info(
+                "导航图统计: pages=%d transitions=%d visited_elements=%d",
+                nav_stats.pages, nav_stats.transitions, nav_stats.visited_elements,
+            )
 
-        if is_pass:
-            self.memory.save_successful_path(task=task, steps=steps)
+            # ── Bug 汇总 ────────────────────────────────────────────
+            all_bugs = self.memory.experience.get_all_bugs()
+            bug_summary: Dict[str, int] = {"total": len(all_bugs)}
+            for b in all_bugs:
+                cat = str(b.category) or "unknown"
+                bug_summary[cat] = bug_summary.get(cat, 0) + 1
+            if all_bugs:
+                logger.info("Bug 汇总: %s", bug_summary)
 
-        self.memory.persist()
+            status   = TestStatus.PASS if is_pass else TestStatus.FAIL
+            history  = self.memory.working.recent(n=steps)
+            new_bugs = self.memory.experience.get_bugs_since(pre_run_bug_id)
+            self._save_report(
+                run_dir=self.config.run_dir,
+                run_id=self.config.run_id,
+                game_package=self.config.adb.game_package,
+                task=task, status=status, steps=steps, history=history,
+                nav_stats=nav_stats, new_bugs=new_bugs, reason=result_str,
+            )
 
-        nav_stats = self.memory.nav_graph.stats()
-        logger.info(
-            "导航图统计: pages=%d transitions=%d visited_elements=%d",
-            nav_stats["pages"], nav_stats["transitions"], nav_stats["visited_elements"],
-        )
-
-        # ── Bug 汇总 ────────────────────────────────────────────
-        all_bugs = self.memory.experience.get_all_bugs()
-        bug_summary = {"total": len(all_bugs)}
-        for b in all_bugs:
-            cat = b.get("category", "unknown") or "unknown"
-            bug_summary[cat] = bug_summary.get(cat, 0) + 1
-        if all_bugs:
-            logger.info("Bug 汇总: %s", bug_summary)
-
-        status   = "pass" if is_pass else "fail"
-        history  = self.memory.working.recent(n=steps)
-        new_bugs = self.memory.experience.get_bugs_since(pre_run_bug_id)
-        self._save_report(
-            run_dir=self.config.run_dir,
-            run_id=self.config.run_id,
-            game_package=self.config.adb.game_package,
-            task=task, status=status, steps=steps, history=history,
-            nav_stats=nav_stats, new_bugs=new_bugs, reason=result_str,
-        )
-
-        return {
-            "status":      status,
-            "steps":       steps,
-            "reason":      result_str,
-            "history":     history,
-            "nav_stats":   nav_stats,
-            "bug_summary": bug_summary,
-            "bugs":        all_bugs,
-        }
+            return RunResult(
+                status      = status,
+                steps       = steps,
+                reason      = result_str,
+                history     = history,
+                nav_stats   = nav_stats,
+                bug_summary = bug_summary,
+                bugs        = new_bugs,
+            )
+        finally:
+            _root_logger.removeHandler(_fh)
+            _fh.close()
 
     def _save_report(self, **kwargs) -> None:
         write_report(**kwargs)

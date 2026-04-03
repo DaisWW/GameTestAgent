@@ -17,13 +17,14 @@ import io
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
 
 from core.llm.base import BrainProvider
+from core.types import ActionType
 
 if TYPE_CHECKING:
     from core.context.protocol import ContextPacket
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent.parent / "config" / "prompt_template.json"
 
 _FALLBACK_ACTION: Dict[str, Any] = {
-    "action":    "wait",
+    "action":    ActionType.WAIT,
     "params":    {"seconds": 2},
     "reasoning": "LLM 调用失败，等待重试",
     "done":      False,
@@ -162,6 +163,32 @@ class LLMAdapter(BrainProvider):
             raise ValueError(f"LLM 输出不是 dict: {type(decision)}")
         if "action" not in decision:
             raise ValueError(f"LLM 输出缺少 'action' 字段: {decision}")
+
+    def ask_vision(self, image, question: str) -> Optional[str]:
+        """向 VLM 提一个开放问题，返回文本响应（不经过 ActionDecision 格式解析）。
+
+        Args:
+            image:    PIL Image 截图。
+            question: 问题文本。
+
+        Returns:
+            模型回复文本；调用失败时返回 None。
+        """
+        try:
+            img_b64 = _encode_image(image)
+            messages = [
+                HumanMessage(content=[
+                    {"type": "image_url",
+                     "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                    {"type": "text", "text": question},
+                ])
+            ]
+            response = self._llm.invoke(messages)
+            content = getattr(response, "content", None)
+            return str(content) if content is not None else None
+        except Exception as exc:
+            logger.warning("ask_vision 调用失败: %s", exc)
+            return None
 
     def __repr__(self) -> str:
         model_id = getattr(self._llm, "model_name", None) or getattr(

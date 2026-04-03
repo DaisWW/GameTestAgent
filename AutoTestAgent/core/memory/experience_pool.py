@@ -13,6 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.types import ExperienceType
+from core.models import BugRecord
+
 logger = logging.getLogger(__name__)
 
 _DDL = """
@@ -142,18 +145,25 @@ class ExperiencePool:
         row = self._conn.execute("SELECT MAX(id) AS m FROM bug_observations").fetchone()
         return row["m"] or 0
 
-    def get_bugs_since(self, min_id: int) -> List[Dict[str, Any]]:
-        return [dict(r) for r in self._conn.execute(
-            "SELECT id, page_hash, description, severity, category, tags, created_at "
-            "FROM bug_observations WHERE id > ? ORDER BY id ASC", (min_id,)
-        ).fetchall()]
+    def get_bugs_since(self, min_id: int) -> List[BugRecord]:
+        return [
+            BugRecord.from_row(dict(r))
+            for r in self._conn.execute(
+                "SELECT id, page_hash, description, severity, category, "
+                "tags, screenshot_path, evidence, created_at "
+                "FROM bug_observations WHERE id > ? ORDER BY id ASC", (min_id,)
+            ).fetchall()
+        ]
 
-    def get_all_bugs(self) -> List[Dict[str, Any]]:
-        return [dict(r) for r in self._conn.execute(
-            "SELECT page_hash, description, screenshot_path, tags, "
-            "severity, category, evidence, created_at "
-            "FROM bug_observations ORDER BY id DESC"
-        ).fetchall()]
+    def get_all_bugs(self) -> List[BugRecord]:
+        return [
+            BugRecord.from_row(dict(r))
+            for r in self._conn.execute(
+                "SELECT id, page_hash, description, screenshot_path, tags, "
+                "severity, category, evidence, created_at "
+                "FROM bug_observations ORDER BY id DESC"
+            ).fetchall()
+        ]
 
     # ── UI 知识库 ─────────────────────────────────────────────────────
 
@@ -176,18 +186,18 @@ class ExperiencePool:
         result: List[Dict[str, Any]] = []
 
         for path in self.query_similar_paths(task, limit=min(2, limit)):
-            result.append({"type": "path", "data": path})
+            result.append({"type": ExperienceType.PATH, "data": path})
 
         bug = self.is_known_bug_page(page_hash)
         if bug and len(result) < limit:
-            result.append({"type": "bug", "data": {"page_hash": page_hash, "description": bug}})
+            result.append({"type": ExperienceType.BUG, "data": {"page_hash": page_hash, "description": bug}})
 
         if element_labels:
             for label in element_labels:
                 if len(result) >= limit:
                     break
                 for k in self.query_ui_knowledge(label, limit=1):
-                    result.append({"type": "knowledge", "data": k})
+                    result.append({"type": ExperienceType.KNOWLEDGE, "data": k})
 
         return result[:limit]
 

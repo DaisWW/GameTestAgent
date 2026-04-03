@@ -25,6 +25,7 @@ import time
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from langgraph.graph import StateGraph, END
+from core.types import RecoveryStrategy
 from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -43,7 +44,12 @@ class RecoveryState(TypedDict, total=False):
     strategy_index: int     # 当前尝试的恢复策略索引
 
 
-_STRATEGIES = ["wait", "press_home", "launch_game", "abandon"]
+_STRATEGIES = [
+    RecoveryStrategy.WAIT,
+    RecoveryStrategy.PRESS_HOME,
+    RecoveryStrategy.LAUNCH_GAME,
+    RecoveryStrategy.ABANDON,
+]
 
 
 def _make_recover_node(worker: "LangGraphWorker"):
@@ -62,15 +68,15 @@ def _make_recover_node(worker: "LangGraphWorker"):
         adb = worker._get_adb()
 
         try:
-            if strategy == "wait":
+            if strategy == RecoveryStrategy.WAIT:
                 time.sleep(3)
-            elif strategy == "press_home":
+            elif strategy == RecoveryStrategy.PRESS_HOME:
                 adb.press_home()
                 time.sleep(2)
-            elif strategy == "launch_game":
+            elif strategy == RecoveryStrategy.LAUNCH_GAME:
                 adb.launch_game()
                 time.sleep(worker.config.adb.game_launch_wait)
-            elif strategy == "abandon":
+            elif strategy == RecoveryStrategy.ABANDON:
                 return {**state, "give_up": True}
         except Exception as exc:
             logger.warning("[Recovery] 策略 %s 执行失败: %s", strategy, exc)

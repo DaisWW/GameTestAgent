@@ -19,8 +19,6 @@ def make_node(worker: "LangGraphWorker"):
         logger.info("[Step %02d] ── PERCEPTION ──────────────────────", step)
 
         screenshot  = worker.capture()
-        worker.save_screenshot(screenshot, step, state.get("run_dir", worker.config.run_dir))
-
         ui_elements = worker.detect(screenshot)
         logger.info("  OmniParser: %d 个元素", len(ui_elements))
         worker.save_annotated_screenshot(screenshot, ui_elements, step, state.get("run_dir", worker.config.run_dir))
@@ -29,6 +27,7 @@ def make_node(worker: "LangGraphWorker"):
         logger.info("  PageHash: %s", page_hash[:8])
 
         worker.save_page_screenshot(screenshot, page_hash, state.get("memory_dir", worker.config.memory_dir))
+        worker.save_page_annotated_screenshot(screenshot, ui_elements, page_hash)
         worker.memory.nav_graph.register_page(page_hash, elements=ui_elements)
 
         packet = worker.context_builder.build(

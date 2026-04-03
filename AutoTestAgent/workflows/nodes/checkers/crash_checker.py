@@ -10,6 +10,7 @@ import logging
 from typing import List, TYPE_CHECKING
 
 from .base import BugChecker, BugReport
+from core.types import BugCategory, BugSeverity, BugTag
 
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
@@ -25,10 +26,10 @@ class CrashChecker(BugChecker):
             if worker._get_adb().check_crash():
                 task = state.get("task", "")[:60]
                 return [BugReport(
-                    category="crash",
-                    severity="critical",
+                    category=BugCategory.CRASH,
+                    severity=BugSeverity.CRITICAL,
                     description=f"游戏崩溃，当前任务: {task}",
-                    tags=["crash"],
+                    tags=[BugTag.CRASH],
                     evidence={"page_hash": state.get("page_hash", ""),
                               "step": state.get("step", 0)},
                 )]

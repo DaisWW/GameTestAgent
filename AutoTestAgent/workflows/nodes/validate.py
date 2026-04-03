@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING
 
 from core.vision.perception import compute_phash, is_page_changed
+from core.types import ActionType
 
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
@@ -52,7 +53,7 @@ def make_node(worker: "LangGraphWorker"):
         )
 
         # 无论页面是否变化，tap 过的元素都应标为已访问，避免 SequentialDecider 无限重试
-        if act_type == "tap" and elem_id is not None:
+        if act_type == ActionType.TAP and elem_id is not None:
             worker.memory.nav_graph.mark_visited(prev_hash, elem_id)
 
         if page_changed:

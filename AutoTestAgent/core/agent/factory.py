@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 from config.settings import AgentConfig
+from core.types import LLMProvider
 from core.llm.base import BrainProvider
 from core.llm.factory import create_llm
 from core.llm.adapter import LLMAdapter
@@ -53,7 +54,7 @@ def _create_llm_adapter(config: AgentConfig) -> BrainProvider:
 
     llm.provider=sequential 时跳过真实模型调用，按元素 ID 顺序遍历。
     """
-    if config.llm.provider == "sequential":
+    if config.llm.provider == LLMProvider.SEQUENTIAL:
         from core.llm.sequential import SequentialDecider
         decider = SequentialDecider()
         logger.info("LLM: SequentialDecider（顺序遍历，无需 API Key）")

@@ -15,14 +15,16 @@ from config.settings import AgentConfig, VisionConfig, LLMConfig, ADBConfig, Out
 from core.agent.factory import get_agent
 from core.vision.providers.mock import Provider as MockVision
 from core.llm.sequential import SequentialDecider
+from core.types import LLMProvider, TestStatus, VisionType
+from core.models import RunResult
 
 
 # ── helpers ───────────────────────────────────────────────────────
 
 def _make_config(tmp_path) -> AgentConfig:
     return AgentConfig(
-        vision=VisionConfig(vision_type="mock"),
-        llm=LLMConfig(provider="sequential"),
+        vision=VisionConfig(vision_type=VisionType.MOCK),
+        llm=LLMConfig(provider=LLMProvider.SEQUENTIAL),
         adb=ADBConfig(game_package="com.test.demo", game_activity=".MainActivity"),
         output=OutputConfig(output_dir=str(tmp_path), save_screenshots=False),
         max_steps=5,
@@ -64,10 +66,10 @@ def test_full_flow_completes(tmp_path):
 
         result = worker.run("点击所有按钮")
 
-    assert result["status"] in ("pass", "fail", "error")
-    assert isinstance(result["steps"], int)
-    assert "history" in result
-    assert "nav_stats" in result
+    assert result.status in (TestStatus.PASS, TestStatus.FAIL, TestStatus.ERROR)
+    assert isinstance(result.steps, int)
+    assert isinstance(result.history, list)
+    assert isinstance(result.nav_stats.pages, int)
 
     worker.teardown()
 
@@ -94,7 +96,7 @@ def test_memory_manager_records_steps(tmp_path):
         result = worker.run("测试记忆记录")
 
     assert isinstance(len(worker.memory.working), int)
-    assert result["steps"] >= 0
+    assert result.steps >= 0
 
     worker.teardown()
 
@@ -121,7 +123,7 @@ def test_sequential_decider_pass(tmp_path):
 
         result = worker.run("顺序遍历所有按钮")
 
-    assert result["status"] in ("pass", "fail")
+    assert result.status in (TestStatus.PASS, TestStatus.FAIL)
 
     worker.teardown()
 
@@ -129,14 +131,15 @@ def test_sequential_decider_pass(tmp_path):
 def test_config_nested_structure():
     """AgentConfig 嵌套子配置结构是否正确。"""
     config = AgentConfig(
-        vision=VisionConfig(vision_type="mock"),
-        llm=LLMConfig(provider="openai", model_name="gpt-4o"),
+        vision=VisionConfig(vision_type=VisionType.MOCK),
+        llm=LLMConfig(provider=LLMProvider.OPENAI, model_name="gpt-4o"),
         adb=ADBConfig(game_package="com.example.game"),
         output=OutputConfig(output_dir="/tmp/test", save_screenshots=True),
     )
-    assert config.vision.vision_type == "mock"
-    assert config.llm.provider == "openai"
+    assert config.vision.vision_type == VisionType.MOCK
+    assert config.llm.provider == LLMProvider.OPENAI
+    assert isinstance(RunResult(status=TestStatus.PASS, steps=0), RunResult)
     assert config.llm.model_name == "gpt-4o"
     assert config.adb.game_package == "com.example.game"
     assert config.output.save_screenshots is True
-    assert config.max_steps == 30
+    assert config.max_steps == 600

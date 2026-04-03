@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, List, TYPE_CHECKING
 
 from .base import BugChecker, BugReport
+from core.types import BugCategory, BugSeverity, BugTag, ElementType
 
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
@@ -23,7 +24,7 @@ _OVERLAP_IOU_THRESHOLD = 0.3     # IoU > 30% 认为重叠
 _OOB_TOLERANCE = 10              # bbox 坐标 < -10 或 > 1010 认为越界
 _MIN_GAP = 15                    # 可点击元素中心距 < 15（归一化坐标）认为过密
 
-_CLICKABLE_TYPES = {"button", "icon", "input"}
+_CLICKABLE_TYPES = {ElementType.BUTTON, ElementType.ICON, ElementType.INPUT}
 
 
 def _compute_iou(a: List[int], b: List[int]) -> float:
@@ -67,14 +68,14 @@ class LayoutChecker(BugChecker):
                 iou = _compute_iou(a["bbox"], b["bbox"])
                 if iou > _OVERLAP_IOU_THRESHOLD:
                     bugs.append(BugReport(
-                        category="layout",
-                        severity="major",
+                        category=BugCategory.LAYOUT,
+                        severity=BugSeverity.MAJOR,
                         description=(
                             f"元素重叠: [{a['id']}]{a.get('label', '')} "
                             f"与 [{b['id']}]{b.get('label', '')} "
                             f"IoU={iou:.2f}"
                         ),
-                        tags=["overlap"],
+                        tags=[BugTag.OVERLAP],
                         evidence={"elem_a": a, "elem_b": b, "iou": round(iou, 3)},
                     ))
 
@@ -92,13 +93,13 @@ class LayoutChecker(BugChecker):
                 oob_dirs.append("bottom")
             if oob_dirs:
                 bugs.append(BugReport(
-                    category="layout",
-                    severity="minor",
+                    category=BugCategory.LAYOUT,
+                    severity=BugSeverity.MINOR,
                     description=(
                         f"元素越界: [{e['id']}]{e.get('label', '')} "
                         f"bbox={bbox} 超出屏幕({', '.join(oob_dirs)})"
                     ),
-                    tags=["out_of_bounds"],
+                    tags=[BugTag.OUT_OF_BOUNDS],
                     evidence={"element": e, "directions": oob_dirs},
                 ))
 
@@ -108,14 +109,14 @@ class LayoutChecker(BugChecker):
                 dist = _distance(_center(a["bbox"]), _center(b["bbox"]))
                 if dist < _MIN_GAP:
                     bugs.append(BugReport(
-                        category="layout",
-                        severity="minor",
+                        category=BugCategory.LAYOUT,
+                        severity=BugSeverity.MINOR,
                         description=(
                             f"元素过密: [{a['id']}]{a.get('label', '')} "
                             f"与 [{b['id']}]{b.get('label', '')} "
                             f"中心距={dist:.1f} (阈值{_MIN_GAP})"
                         ),
-                        tags=["too_dense"],
+                        tags=[BugTag.TOO_DENSE],
                         evidence={"elem_a": a, "elem_b": b, "distance": round(dist, 1)},
                     ))
 

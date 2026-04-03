@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 from PIL import Image
+from langchain_core.messages import AIMessage
 
 from core.llm.adapter import LLMAdapter
 from core.context.protocol import ContextPacket
+from core.types import ActionType
 
 
 def _make_packet() -> ContextPacket:
@@ -25,13 +27,13 @@ def _make_packet() -> ContextPacket:
 
 def test_adapter_returns_action():
     mock_llm = MagicMock()
-    mock_llm.invoke.return_value = MagicMock(content='{"action": "tap", "params": {"id": 1}, "reasoning": "ok", "done": false, "result": ""}')
+    mock_llm.invoke.return_value = AIMessage(content='{"action": "tap", "params": {"id": 1}, "reasoning": "ok", "done": false, "result": ""}')
 
     with patch("core.llm.adapter._load_system_prompt", return_value="You are a test agent."):
         adapter = LLMAdapter(llm=mock_llm)
 
     decision = adapter.ask(_make_packet())
-    assert decision["action"] == "tap"
+    assert decision["action"] == ActionType.TAP
 
 
 def test_adapter_fallback_on_error():
@@ -42,4 +44,4 @@ def test_adapter_fallback_on_error():
         adapter = LLMAdapter(llm=mock_llm, max_retries=0)
 
     decision = adapter.ask(_make_packet())
-    assert decision["action"] == "wait"
+    assert decision["action"] == ActionType.WAIT

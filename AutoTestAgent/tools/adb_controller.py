@@ -11,6 +11,7 @@ from .core import RunnerSettings
 from .exceptions import ADBError, CommandFailedError, DeviceNotFoundError
 from .screen_recorder import ScreenRecorder
 from .utils import escape_for_adb_input
+from core.types import SwipeDirection
 
 logger = logging.getLogger(__name__)
 
@@ -129,13 +130,13 @@ class ADBController:
 
     def swipe(self, nx: float, ny: float, direction: str, distance_pct: float = 0.3) -> None:
         """direction: up | down | left | right"""
-        _DIRS = {"up", "down", "left", "right"}
+        _DIRS = {SwipeDirection.UP, SwipeDirection.DOWN, SwipeDirection.LEFT, SwipeDirection.RIGHT}
         if direction not in _DIRS:
             raise ValueError(f"非法方向 {direction!r}，可选：{_DIRS}")
         x, y = self._norm_to_px(nx, ny)
         dist_v = int(self.dev_h * distance_pct)
         dist_h = int(self.dev_w * distance_pct)
-        dx, dy = {"up": (0, -dist_v), "down": (0, dist_v), "left": (-dist_h, 0), "right": (dist_h, 0)}[direction]
+        dx, dy = {SwipeDirection.UP: (0, -dist_v), SwipeDirection.DOWN: (0, dist_v), SwipeDirection.LEFT: (-dist_h, 0), SwipeDirection.RIGHT: (dist_h, 0)}[direction]
         x2 = max(0, min(self.dev_w - 1, x + dx))
         y2 = max(0, min(self.dev_h - 1, y + dy))
         self._run_checked(["shell", "input", "swipe", str(x), str(y), str(x2), str(y2), "400"], "滑动失败")

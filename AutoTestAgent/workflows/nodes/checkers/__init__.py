@@ -9,6 +9,7 @@
 from typing import List, TYPE_CHECKING
 
 from .base import BugChecker
+from core.types import BugCategory
 from .crash_checker import CrashChecker
 from .layout_checker import LayoutChecker
 from .visual_checker import VisualChecker
@@ -22,12 +23,12 @@ if TYPE_CHECKING:
 # ── 按优先级排列：critical 维度靠前 ────────────────────────────
 # (checker_name, checker_class) — name 与 CheckerConfig 字段名一致
 CHECKER_REGISTRY = [
-    ("crash",      CrashChecker),
-    ("visual",     VisualChecker),
-    ("freeze",     FreezeChecker),
-    ("layout",     LayoutChecker),
-    ("functional", FunctionalChecker),
-    ("content",    ContentChecker),
+    (BugCategory.CRASH,      CrashChecker),
+    (BugCategory.VISUAL,     VisualChecker),
+    (BugCategory.FREEZE,     FreezeChecker),
+    (BugCategory.LAYOUT,     LayoutChecker),
+    (BugCategory.FUNCTIONAL, FunctionalChecker),
+    (BugCategory.CONTENT,    ContentChecker),
 ]
 
 

@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, TYPE_CHECKING
 
+from core.types import BugCategory, BugSeverity, BugTag
+
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
 
@@ -18,17 +20,17 @@ if TYPE_CHECKING:
 class BugReport:
     """一条 Bug 检测结果。"""
 
-    category: str
-    """维度标签: crash | layout | visual | freeze | functional | content"""
+    category: BugCategory
+    """检测维度，见 BugCategory 枚举"""
 
-    severity: str
-    """严重程度: critical | major | minor"""
+    severity: BugSeverity
+    """严重程度，见 BugSeverity 枚举"""
 
     description: str
     """人类可读的 Bug 描述"""
 
-    tags: List[str] = field(default_factory=list)
-    """细分标签，如 ["overlap", "button"]，存入 experience_pool.tags"""
+    tags: List[BugTag] = field(default_factory=list)
+    """细分标签列表，见 BugTag 枚举，存入 experience_pool.tags"""
 
     evidence: Dict[str, Any] = field(default_factory=dict)
     """附加证据（bbox 坐标、像素值、IoU 等），方便后续回溯与可视化"""

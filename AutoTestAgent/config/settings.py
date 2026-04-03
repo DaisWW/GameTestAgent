@@ -28,6 +28,7 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
             vision_type=os.getenv("VISION_TYPE", "omni_v2"),
             omni_endpoint=os.getenv("OMNI_ENDPOINT", "http://127.0.0.1:7861"),
             omni_timeout=int(os.getenv("OMNI_TIMEOUT", "30")),
+            omni_imgsz=int(os.getenv("OMNI_IMGSZ", "1280")),
         ),
         llm=LLMConfig(
             provider=os.getenv("LLM_PROVIDER", "openai"),
@@ -56,7 +57,7 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
             functional=os.getenv("CHECK_FUNCTIONAL", "true").lower() == "true",
             content=os.getenv("CHECK_CONTENT", "true").lower() == "true",
         ),
-        max_steps=int(os.getenv("MAX_STEPS", "30")),
+        max_steps=int(os.getenv("MAX_STEPS", "600")),
         step_delay=float(os.getenv("STEP_DELAY", "1.0")),
     )
 
@@ -74,6 +75,8 @@ class VisionConfig:
     """OmniParser 服务地址"""
     omni_timeout: int = 30
     """HTTP 请求超时（秒）"""
+    omni_imgsz: int = 1280
+    """OmniParser YOLO 输入分辨率（640→1280 可检出更小元素，如游戏世界空间标签）"""
 
 
 @dataclass
@@ -145,7 +148,7 @@ class AgentConfig:
     checker: CheckerConfig = field(default_factory=CheckerConfig)
 
     # ── Agent loop ──────────────────────────────────────────────────
-    max_steps: int = 30
+    max_steps: int = 600
     step_delay: float = 1.0
     """每步执行后等待时间（秒），让 UI 稳定"""
 
@@ -178,6 +181,8 @@ class AgentConfig:
     def omni_endpoint(self) -> str:     return self.vision.omni_endpoint
     @property
     def omni_timeout(self) -> int:      return self.vision.omni_timeout
+    @property
+    def omni_imgsz(self) -> int:        return self.vision.omni_imgsz
 
     @property
     def llm_provider(self) -> str:      return self.llm.provider

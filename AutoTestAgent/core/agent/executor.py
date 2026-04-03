@@ -10,6 +10,8 @@ import logging
 import time
 from typing import Any, Dict, TYPE_CHECKING
 
+from core.types import ActionType, SwipeDirection
+
 if TYPE_CHECKING:
     from tools.adb_controller import ADBController
 
@@ -26,7 +28,7 @@ def _register(name: str):
     return decorator
 
 
-@_register("tap")
+@_register(ActionType.TAP)
 def _tap(adb: "ADBController", action: Dict[str, Any]) -> None:
     bbox = action.get("_bbox")
     if not bbox:
@@ -37,10 +39,10 @@ def _tap(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.tap(cx, cy)
 
 
-@_register("swipe")
+@_register(ActionType.SWIPE)
 def _swipe(adb: "ADBController", action: Dict[str, Any]) -> None:
     bbox      = action.get("_bbox")
-    direction = action.get("params", {}).get("direction", "up")
+    direction = action.get("params", {}).get("direction", SwipeDirection.UP)
     if not bbox:
         logger.warning("swipe 动作缺少 _bbox，跳过")
         return
@@ -49,27 +51,32 @@ def _swipe(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.swipe(cx, cy, direction)
 
 
-@_register("input_text")
+@_register(ActionType.INPUT_TEXT)
 def _input_text(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.input_text(action.get("params", {}).get("text", ""))
 
 
-@_register("press_back")
+@_register(ActionType.PRESS_BACK)
 def _press_back(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.press_back()
 
 
-@_register("press_home")
+@_register(ActionType.PRESS_HOME)
 def _press_home(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.press_home()
 
 
-@_register("wait")
+@_register(ActionType.WAIT)
 def _wait(adb: "ADBController", action: Dict[str, Any]) -> None:
-    time.sleep(float(action.get("params", {}).get("seconds", 2)))
+    try:
+        seconds = float(action.get("params", {}).get("seconds", 2))
+    except (TypeError, ValueError):
+        logger.warning("wait 动作 seconds 参数无效，使用默认值 2s")
+        seconds = 2.0
+    time.sleep(seconds)
 
 
-@_register("done")
+@_register(ActionType.DONE)
 def _done(adb: "ADBController", action: Dict[str, Any]) -> None:
     pass  # 任务完成标记，无需 ADB 操作
 
@@ -100,7 +107,7 @@ class ActionExecutor:
         Raises:
             tools.exceptions.ADBError: ADB 命令执行失败时向上传播。
         """
-        act = action.get("action", "wait")
+        act = action.get("action", ActionType.WAIT)
         handler = _HANDLERS.get(act)
         if handler is None:
             logger.warning("未知动作类型: %s，跳过", act)

@@ -2,24 +2,23 @@ from __future__ import annotations
 
 """维度 4：卡死 / 循环检测 (Freeze Checker)
 
-利用 ContextBuilder 已计算好的 anomaly_flag（UI 卡死、ABA 循环），
-以及 working_memory 中的操作历史来检测：
-- UI 冻结（连续多帧 phash 几乎不变）
-- ABA 循环（页面被反复切换）
-- 连续操作无效（多次 tap 后页面不变）
+完全依赖 ContextBuilder 预先写入 ContextPacket.anomaly_flag 的字符串来判断，
+不再直接访问 working_memory：
+- UI 冻结（detect_ui_freeze：连续帧 phash 几乎不变）
+- ABA 循环（is_in_aba_loop：页面被反复交替访问）
+- 连续操作无效（detect_stale_click：多次操作后页面不变）
 """
 
 import logging
 from typing import List, TYPE_CHECKING
 
 from .base import BugChecker, BugReport
+from core.types import BugCategory, BugSeverity, BugTag
 
 if TYPE_CHECKING:
     from core.agent.worker import LangGraphWorker
 
 logger = logging.getLogger(__name__)
-
-_NO_CHANGE_STREAK_THRESHOLD = 3  # 连续 N 次操作页面不变则报告
 
 
 class FreezeChecker(BugChecker):
@@ -35,55 +34,39 @@ class FreezeChecker(BugChecker):
             anomaly_flag = getattr(packet, "anomaly_flag", "") or ""
 
         if anomaly_flag:
-            # 区分卡死和循环
+            # 区分卡死 / ABA 循环 / 连续无响应（detect_stale_click 的输出含此关键词）
             if "卡死" in anomaly_flag or "冻结" in anomaly_flag:
                 bugs.append(BugReport(
-                    category="freeze",
-                    severity="critical",
+                    category=BugCategory.FREEZE,
+                    severity=BugSeverity.CRITICAL,
                     description=anomaly_flag,
-                    tags=["ui_freeze"],
+                    tags=[BugTag.UI_FREEZE],
                     evidence={"anomaly_flag": anomaly_flag},
                 ))
             elif "ABA" in anomaly_flag or "循环" in anomaly_flag:
                 bugs.append(BugReport(
-                    category="freeze",
-                    severity="major",
+                    category=BugCategory.FREEZE,
+                    severity=BugSeverity.MAJOR,
                     description=anomaly_flag,
-                    tags=["aba_loop"],
+                    tags=[BugTag.ABA_LOOP],
+                    evidence={"anomaly_flag": anomaly_flag},
+                ))
+            elif "未引起页面变化" in anomaly_flag:
+                # detect_stale_click() 触发：使用具体标签而非通用 ANOMALY，避免与下方直接检测产生双重报告
+                bugs.append(BugReport(
+                    category=BugCategory.FREEZE,
+                    severity=BugSeverity.MAJOR,
+                    description=anomaly_flag,
+                    tags=[BugTag.NO_RESPONSE_STREAK],
                     evidence={"anomaly_flag": anomaly_flag},
                 ))
             else:
                 bugs.append(BugReport(
-                    category="freeze",
-                    severity="major",
+                    category=BugCategory.FREEZE,
+                    severity=BugSeverity.MAJOR,
                     description=f"异常标记: {anomaly_flag}",
-                    tags=["anomaly"],
+                    tags=[BugTag.ANOMALY],
                     evidence={"anomaly_flag": anomaly_flag},
                 ))
-
-        # ── 连续操作无效检测 ──────────────────────────────────────
-        # 从 working_memory 取最近的操作记录，看是否连续 page_changed=False
-        try:
-            recent = worker.memory.working.recent(n=_NO_CHANGE_STREAK_THRESHOLD)
-            if len(recent) >= _NO_CHANGE_STREAK_THRESHOLD:
-                # MemoryStep 中 success 字段对应 page_changed
-                no_change_streak = all(
-                    not step_rec.get("success", True)
-                    for step_rec in recent[-_NO_CHANGE_STREAK_THRESHOLD:]
-                )
-                if no_change_streak:
-                    actions = [s.get("action", "?") for s in recent[-_NO_CHANGE_STREAK_THRESHOLD:]]
-                    bugs.append(BugReport(
-                        category="freeze",
-                        severity="major",
-                        description=(
-                            f"连续 {_NO_CHANGE_STREAK_THRESHOLD} 次操作页面未变化: "
-                            f"{actions}"
-                        ),
-                        tags=["no_response_streak"],
-                        evidence={"actions": actions, "streak": _NO_CHANGE_STREAK_THRESHOLD},
-                    ))
-        except Exception as exc:
-            logger.debug("连续无效检测异常: %s", exc)
 
         return bugs

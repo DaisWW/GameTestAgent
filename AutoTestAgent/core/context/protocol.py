@@ -134,7 +134,7 @@ class ContextBuilder:
             screenshot=screenshot,
             task_goal=task,
             current_path=current_path,
-            action_history=self._wm.recent(self._history_window),
+            action_history=[s.to_dict() for s in self._wm.recent(self._history_window)],
             current_observation=current_observation,
             anomaly_flag=anomaly_flag,
             relevant_experience=relevant_experience,
