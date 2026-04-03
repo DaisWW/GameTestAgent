@@ -107,9 +107,16 @@ class MediaStore:
         overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
         draw    = ImageDraw.Draw(overlay)
 
-        try:
-            font = ImageFont.truetype("arial.ttf", max(12, w // 80))
-        except Exception:
+        font_size = max(12, w // 80)
+        font = None
+        # 优先使用支持中文的字体（Windows 微软雅黑 → 宋体 → arial → 默认）
+        for font_name in ("msyh.ttc", "msyhbd.ttc", "simsun.ttc", "simhei.ttf", "arial.ttf"):
+            try:
+                font = ImageFont.truetype(font_name, font_size)
+                break
+            except Exception:
+                continue
+        if font is None:
             font = ImageFont.load_default()
 
         for elem in ui_elements:

@@ -44,22 +44,17 @@ class FreezeChecker(BugChecker):
                     evidence={"anomaly_flag": anomaly_flag},
                 ))
             elif "ABA" in anomaly_flag or "循环" in anomaly_flag:
-                bugs.append(BugReport(
-                    category=BugCategory.FREEZE,
-                    severity=BugSeverity.MAJOR,
-                    description=anomaly_flag,
-                    tags=[BugTag.ABA_LOOP],
-                    evidence={"anomaly_flag": anomaly_flag},
-                ))
+                pass  # DFS 探索本身就会经过同一页面多次，不属游戏 bug
             elif "未引起页面变化" in anomaly_flag:
-                # detect_stale_click() 触发：使用具体标签而非通用 ANOMALY，避免与下方直接检测产生双重报告
-                bugs.append(BugReport(
-                    category=BugCategory.FREEZE,
-                    severity=BugSeverity.MAJOR,
-                    description=anomaly_flag,
-                    tags=[BugTag.NO_RESPONSE_STREAK],
-                    evidence={"anomaly_flag": anomaly_flag},
-                ))
+                # 连续 PRESS_BACK 不改页是根页正常行为，只在包含非返回操作时才报 Bug
+                if "press_back" not in anomaly_flag.lower():
+                    bugs.append(BugReport(
+                        category=BugCategory.FREEZE,
+                        severity=BugSeverity.MAJOR,
+                        description=anomaly_flag,
+                        tags=[BugTag.NO_RESPONSE_STREAK],
+                        evidence={"anomaly_flag": anomaly_flag},
+                    ))
             else:
                 bugs.append(BugReport(
                     category=BugCategory.FREEZE,

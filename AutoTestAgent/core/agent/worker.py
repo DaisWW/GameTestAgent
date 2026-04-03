@@ -168,6 +168,11 @@ class LangGraphWorker:
             logger.info("启动游戏: %s", self.config.adb.game_package)
             adb.launch_game()
 
+        # ── 录屏（可选）────────────────────────────────────────────
+        if self.config.screen_record:
+            logger.info("开始录屏 → 将保存至 %s", self.config.run_dir)
+            adb.start_recording()
+
         graph = self._get_graph()
 
         initial_state = {
@@ -184,7 +189,7 @@ class LangGraphWorker:
             "memory_dir":     self.config.memory_dir,
         }
         try:
-            try:
+            try:  # noqa: SIM105
                 final_state = dict(initial_state)
                 for event in graph.stream(initial_state, stream_mode="updates"):
                     node_name, node_state = next(iter(event.items()))
@@ -248,6 +253,17 @@ class LangGraphWorker:
                 bugs        = new_bugs,
             )
         finally:
+            # ── 停止录屏并拉取到 run_dir ──────────────────────────
+            if self.config.screen_record:
+                try:
+                    remote_paths = adb.stop_recording()
+                    if remote_paths:
+                        local_paths = adb.pull_recording(remote_paths, local_dir=self.config.run_dir)
+                        logger.info("录屏已保存: %s", local_paths)
+                    else:
+                        logger.warning("录屏停止但未找到录制文件")
+                except Exception as rec_exc:
+                    logger.warning("录屏拉取失败（不影响测试结果）: %s", rec_exc)
             _root_logger.removeHandler(_fh)
             _fh.close()
 

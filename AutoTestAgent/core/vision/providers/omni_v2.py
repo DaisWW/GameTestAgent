@@ -30,6 +30,29 @@ _LABEL_MAP = {
     "radio":    ElementType.INPUT,
 }
 
+# 匹配明显的 OCR 乱码：连续特殊符号、不可打印字符、大量无意义混合字符
+_GARBLED_RE = re.compile(
+    r'[\x00-\x08\x0b\x0c\x0e-\x1f]'   # 控制字符
+    r'|^[^\w\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]{3,}$'  # 纯特殊符号 3 个以上
+    r'|(.)\1{4,}',                       # 同一字符连续重复 5 次以上
+    re.UNICODE,
+)
+
+
+def _clean_label(text: str) -> str:
+    """清洗 OCR 产出的 label，将明显乱码替换为空串。"""
+    text = text.strip()
+    if not text:
+        return ""
+    # 含控制字符或明显乱码模式 → 清空
+    if _GARBLED_RE.search(text):
+        return ""
+    # 可打印字符占比过低 → 视为乱码
+    printable = sum(1 for c in text if c.isprintable())
+    if len(text) > 2 and printable / len(text) < 0.5:
+        return ""
+    return text
+
 
 def _to_1000(val: float, size: int) -> int:
     """将像素坐标转换为 0-1000 归一化坐标。"""
@@ -83,7 +106,7 @@ def _parse_omni_response(raw: List[Dict], w: int, h: int) -> List[Dict[str, Any]
         result.append({
             "id":          idx,
             "bbox":        bbox,
-            "label":       str(content).strip(),
+            "label":       _clean_label(str(content)),
             "type":        elem_type,
             "interactable": interactable,
         })
@@ -141,10 +164,11 @@ def _filter_debug_elements(elements: List[Dict[str, Any]]) -> List[Dict[str, Any
 class _HttpBackend:
     """通过 gradio_client 调用 OmniParser Gradio 服务的 /process 端点。"""
 
-    def __init__(self, endpoint: str, timeout: int, imgsz: int = 1280) -> None:
+    def __init__(self, endpoint: str, timeout: int, imgsz: int = 1280, use_paddleocr: bool = False) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
         self.imgsz = imgsz
+        self.use_paddleocr = use_paddleocr
         self._client = None
 
     def _get_client(self):
@@ -163,7 +187,7 @@ class _HttpBackend:
                 image_input=handle_file(tmp.name),
                 box_threshold=0.05,
                 iou_threshold=0.1,
-                use_paddleocr=False,  # PaddleOCR 在 Windows OneDNN 上崩溃，改用 EasyOCR
+                use_paddleocr=self.use_paddleocr,
                 imgsz=self.imgsz,
                 api_name="/process",
             )
@@ -194,8 +218,9 @@ class Provider(VisionProvider):
         endpoint: str = "http://127.0.0.1:7861",
         timeout: int = 30,
         imgsz: int = 1280,
+        use_paddleocr: bool = False,
     ) -> None:
-        self._backend = _HttpBackend(endpoint, timeout, imgsz=imgsz)
+        self._backend = _HttpBackend(endpoint, timeout, imgsz=imgsz, use_paddleocr=use_paddleocr)
 
     def detect(self, image: Image.Image) -> List[Dict[str, Any]]:
         w, h = image.size
@@ -230,6 +255,7 @@ class Provider(VisionProvider):
             endpoint=config.vision.omni_endpoint,
             timeout=config.vision.omni_timeout,
             imgsz=config.vision.omni_imgsz,
+            use_paddleocr=config.vision.omni_use_paddleocr,
         )
 
     def __repr__(self) -> str:

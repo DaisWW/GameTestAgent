@@ -29,6 +29,7 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
             omni_endpoint=os.getenv("OMNI_ENDPOINT", "http://127.0.0.1:7861"),
             omni_timeout=int(os.getenv("OMNI_TIMEOUT", "30")),
             omni_imgsz=int(os.getenv("OMNI_IMGSZ", "1280")),
+            omni_use_paddleocr=os.getenv("OMNI_USE_PADDLEOCR", "false").lower() == "true",
         ),
         llm=LLMConfig(
             provider=os.getenv("LLM_PROVIDER", "openai"),
@@ -48,6 +49,7 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
         output=OutputConfig(
             output_dir=os.getenv("OUTPUT_DIR", ""),
             save_screenshots=os.getenv("SAVE_SCREENSHOTS", "true").lower() == "true",
+            screen_record=os.getenv("SCREEN_RECORD", "false").lower() == "true",
         ),
         checker=CheckerConfig(
             crash=os.getenv("CHECK_CRASH", "true").lower() == "true",
@@ -77,6 +79,8 @@ class VisionConfig:
     """HTTP 请求超时（秒）"""
     omni_imgsz: int = 1280
     """OmniParser YOLO 输入分辨率（640→1280 可检出更小元素，如游戏世界空间标签）"""
+    omni_use_paddleocr: bool = False
+    """启用 PaddleOCR（中文识别更优，但 Windows OneDNN 环境下可能崩溃）"""
 
 
 @dataclass
@@ -111,6 +115,8 @@ class OutputConfig:
 
     output_dir: str = ""
     save_screenshots: bool = True
+    screen_record: bool = False
+    """是否在每次 run 时录制设备屏幕并保存到 run_dir"""
 
 
 @dataclass
@@ -210,3 +216,5 @@ class AgentConfig:
     def output_dir(self) -> str:        return self.output.output_dir
     @property
     def save_screenshots(self) -> bool: return self.output.save_screenshots
+    @property
+    def screen_record(self) -> bool:    return self.output.screen_record
