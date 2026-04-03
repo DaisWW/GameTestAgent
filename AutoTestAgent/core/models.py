@@ -38,7 +38,6 @@ class BugRecord:
     category:        BugCategory
     severity:        BugSeverity
     tags:            List[BugTag]        = field(default_factory=list)
-    screenshot_path: str                 = ""
     evidence:        Dict[str, Any]      = field(default_factory=dict)
     created_at:      str                 = ""
     id:              int                 = 0
@@ -66,7 +65,6 @@ class BugRecord:
             category        = BugCategory(row.get("category") or BugCategory.CONTENT),
             severity        = BugSeverity(row.get("severity") or BugSeverity.MINOR),
             tags            = tags,
-            screenshot_path = row.get("screenshot_path", "") or "",
             evidence        = evidence,
             created_at      = row.get("created_at", "") or "",
         )

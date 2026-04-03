@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS bug_observations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     page_hash       TEXT    NOT NULL,
     description     TEXT    NOT NULL,
-    screenshot_path TEXT    DEFAULT '',
     tags            TEXT    DEFAULT '',
     severity        TEXT    DEFAULT '',
     category        TEXT    DEFAULT '',
@@ -114,7 +113,6 @@ class ExperiencePool:
         self,
         page_hash: str,
         description: str,
-        screenshot_path: str = "",
         tags: Optional[List[str]] = None,
         severity: str = "",
         category: str = "",
@@ -122,9 +120,9 @@ class ExperiencePool:
     ) -> int:
         cur = self._conn.execute(
             "INSERT INTO bug_observations "
-            "(page_hash, description, screenshot_path, tags, severity, category, evidence, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (page_hash, description, screenshot_path,
+            "(page_hash, description, tags, severity, category, evidence, created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (page_hash, description,
              json.dumps(tags or [], ensure_ascii=False),
              severity, category,
              json.dumps(evidence or {}, ensure_ascii=False),
@@ -150,7 +148,7 @@ class ExperiencePool:
             BugRecord.from_row(dict(r))
             for r in self._conn.execute(
                 "SELECT id, page_hash, description, severity, category, "
-                "tags, screenshot_path, evidence, created_at "
+                "tags, evidence, created_at "
                 "FROM bug_observations WHERE id > ? ORDER BY id ASC", (min_id,)
             ).fetchall()
         ]
@@ -159,7 +157,7 @@ class ExperiencePool:
         return [
             BugRecord.from_row(dict(r))
             for r in self._conn.execute(
-                "SELECT id, page_hash, description, screenshot_path, tags, "
+                "SELECT id, page_hash, description, tags, "
                 "severity, category, evidence, created_at "
                 "FROM bug_observations ORDER BY id DESC"
             ).fetchall()

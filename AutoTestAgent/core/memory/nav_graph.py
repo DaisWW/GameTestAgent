@@ -112,10 +112,6 @@ class NavigationGraph:
         """返回页面元素的 label 列表（向后兼容）。"""
         return [e.get("label", "") for e in self.get_elements(page_hash) if e.get("label")]
 
-    def screenshot_path(self, page_hash: str, memory_dir: str) -> str:
-        """按约定推导页面截图路径: memory/screenshots/{hash}.png。"""
-        return str(Path(memory_dir) / "screenshots" / f"{page_hash}.png")
-
     def get_unvisited_ids(self, page_hash: str, all_element_ids: List[int]) -> List[int]:
         page_hash = self.normalize_hash(page_hash)
         visited = self._visited_map.get(page_hash, set())

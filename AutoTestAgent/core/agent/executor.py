@@ -31,11 +31,15 @@ def _register(name: str):
 @_register(ActionType.TAP)
 def _tap(adb: "ADBController", action: Dict[str, Any]) -> None:
     bbox = action.get("_bbox")
-    if not bbox:
-        logger.warning("tap 动作缺少 _bbox，跳过")
-        return
-    cx = (bbox[0] + bbox[2]) / 2
-    cy = (bbox[1] + bbox[3]) / 2
+    if bbox:
+        cx = (bbox[0] + bbox[2]) / 2
+        cy = (bbox[1] + bbox[3]) / 2
+    else:
+        params = action.get("params", {})
+        cx = float(params.get("x", 500))
+        cy = float(params.get("y", 500))
+        if "x" not in params and "y" not in params:
+            logger.warning("tap 动作缺少 _bbox 和坐标参数，点击屏幕中央")
     adb.tap(cx, cy)
 
 

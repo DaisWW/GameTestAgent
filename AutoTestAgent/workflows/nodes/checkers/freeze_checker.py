@@ -36,9 +36,12 @@ class FreezeChecker(BugChecker):
         if anomaly_flag:
             # 区分卡死 / ABA 循环 / 连续无响应（detect_stale_click 的输出含此关键词）
             if "卡死" in anomaly_flag or "冻结" in anomaly_flag:
+                # 前 12 步内降为 MAJOR，给加载画面等待/中央点击策略足够时间执行
+                step = state.get("step", 99)
+                severity = BugSeverity.MAJOR if step < 12 else BugSeverity.CRITICAL
                 bugs.append(BugReport(
                     category=BugCategory.FREEZE,
-                    severity=BugSeverity.CRITICAL,
+                    severity=severity,
                     description=anomaly_flag,
                     tags=[BugTag.UI_FREEZE],
                     evidence={"anomaly_flag": anomaly_flag},

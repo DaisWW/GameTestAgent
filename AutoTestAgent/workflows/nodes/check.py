@@ -35,7 +35,7 @@ def _save_bug_screenshot(state: dict, worker: "LangGraphWorker", bug: BugReport)
     return shot_path
 
 
-def _persist_bug(bug: BugReport, shot_path: str, state: dict, worker: "LangGraphWorker") -> None:
+def _persist_bug(bug: BugReport, state: dict, worker: "LangGraphWorker") -> None:
     """将 BugReport 写入 ExperiencePool。"""
     page_hash = state.get("page_hash", "")
     if not page_hash:
@@ -43,7 +43,6 @@ def _persist_bug(bug: BugReport, shot_path: str, state: dict, worker: "LangGraph
     worker.memory.experience.save_bug(
         page_hash=page_hash,
         description=bug.description,
-        screenshot_path=shot_path,
         tags=bug.tags,
         severity=bug.severity,
         category=bug.category,
@@ -103,8 +102,8 @@ def make_node(worker: "LangGraphWorker"):
 
         # ── 统一持久化（仅新增 Bug）──────────────────────────────
         for bug in new_bugs:
-            shot_path = _save_bug_screenshot(state, worker, bug)
-            _persist_bug(bug, shot_path, state, worker)
+            _save_bug_screenshot(state, worker, bug)
+            _persist_bug(bug, state, worker)
 
         # ── critical 级别触发恢复 ───────────────────────────────
         critical_bugs = [b for b in all_bugs if b.severity == BugSeverity.CRITICAL]

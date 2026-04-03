@@ -44,11 +44,18 @@ def test_unknown_action_logs_warning():
     adb.tap.assert_not_called()
 
 
-def test_tap_without_bbox_skips():
+def test_tap_without_bbox_taps_center():
     adb = _make_adb()
     ex = ActionExecutor(adb)
     ex.execute({"action": ActionType.TAP, "params": {}})
-    adb.tap.assert_not_called()
+    adb.tap.assert_called_once_with(500.0, 500.0)
+
+
+def test_tap_with_xy_params():
+    adb = _make_adb()
+    ex = ActionExecutor(adb)
+    ex.execute({"action": ActionType.TAP, "params": {"x": 300, "y": 700}})
+    adb.tap.assert_called_once_with(300.0, 700.0)
 
 
 def test_wait_sleeps(monkeypatch):

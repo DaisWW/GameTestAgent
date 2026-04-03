@@ -183,20 +183,39 @@ class _HttpBackend:
         try:
             image.save(tmp.name)
             from gradio_client import handle_file
-            result = self._get_client().predict(
-                image_input=handle_file(tmp.name),
-                box_threshold=0.05,
-                iou_threshold=0.1,
-                use_paddleocr=self.use_paddleocr,
-                imgsz=self.imgsz,
-                api_name="/process",
-            )
+            for use_ocr in ([self.use_paddleocr, False] if self.use_paddleocr else [False]):
+                try:
+                    result = self._get_client().predict(
+                        image_input=handle_file(tmp.name),
+                        box_threshold=0.05,
+                        iou_threshold=0.1,
+                        use_paddleocr=use_ocr,
+                        imgsz=self.imgsz,
+                        api_name="/process",
+                    )
+                    break
+                except Exception as exc:
+                    if use_ocr:
+                        logger.warning("PaddleOCR 调用失败，自动降级为 EasyOCR: %s", exc)
+                        self.use_paddleocr = False  # 本次运行后续不再尝试
+                        continue
+                    raise
+                # Gradio 可能返回 None（服务端静默崩溃），视为失败
+                if result is None or not hasattr(result, "__iter__"):
+                    if use_ocr:
+                        logger.warning("PaddleOCR 返回 None，自动降级为 EasyOCR")
+                        self.use_paddleocr = False
+                        result = None
+                        continue
+                    raise RuntimeError("OmniParser 返回空结果")
         finally:
             try:
                 os.unlink(tmp.name)
             except OSError:
                 pass
 
+        if result is None:
+            raise RuntimeError("OmniParser 返回空结果（PaddleOCR 与 EasyOCR 均失败）")
         _, text = result
         return _parse_omniparser_text(text)
 

@@ -80,7 +80,7 @@ class VisionConfig:
     omni_imgsz: int = 1280
     """OmniParser YOLO 输入分辨率（640→1280 可检出更小元素，如游戏世界空间标签）"""
     omni_use_paddleocr: bool = False
-    """启用 PaddleOCR（中文识别更优，但 Windows OneDNN 环境下可能崩溃）"""
+    """启用 PaddleOCR（中文识别更优，Windows OneDNN 下可能崩溃）"""
 
 
 @dataclass
@@ -189,6 +189,8 @@ class AgentConfig:
     def omni_timeout(self) -> int:      return self.vision.omni_timeout
     @property
     def omni_imgsz(self) -> int:        return self.vision.omni_imgsz
+    @property
+    def omni_use_paddleocr(self) -> bool: return self.vision.omni_use_paddleocr
 
     @property
     def llm_provider(self) -> str:      return self.llm.provider
