@@ -32,6 +32,37 @@ class NavigationGraph:
             self.load_json(graph_path)
             logger.info("导航图已从 %s 恢复，共 %d 个页面节点", graph_path, self._g.number_of_nodes())
 
+    _HASH_MERGE_THRESHOLD = 6  # 汉明距离 ≤ 此值认为是同一逻辑页面（Unity 动态帧内容）
+
+    def normalize_hash(self, page_hash: str) -> str:
+        """将 page_hash 归一化到已知最近节点，解决 Unity 动态内容导致的 hash 漂移。
+
+        若与已知节点汉明距离 ≤ _HASH_MERGE_THRESHOLD，复用已知节点 key；
+        否则返回原始 hash（作为新节点）。
+        """
+        try:
+            import imagehash
+            new_h = imagehash.hex_to_hash(page_hash)
+        except Exception:
+            return page_hash
+
+        best_key: Optional[str] = None
+        best_dist = self._HASH_MERGE_THRESHOLD + 1
+        for existing_key in self._g.nodes:
+            try:
+                dist = new_h - imagehash.hex_to_hash(existing_key)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_key = existing_key
+            except Exception:
+                continue
+
+        if best_key is not None and best_dist <= self._HASH_MERGE_THRESHOLD:
+            if best_key != page_hash:
+                logger.debug("hash 归一: %s → %s (dist=%d)", page_hash[:8], best_key[:8], best_dist)
+            return best_key
+        return page_hash
+
     def register_page(
         self,
         page_hash: str,
@@ -44,6 +75,7 @@ class NavigationGraph:
             elements:  VisionProvider.detect() 返回的元素列表
                        每项格式: {id, bbox, label, type, interactable}。
         """
+        page_hash = self.normalize_hash(page_hash)
         if not self._g.has_node(page_hash):
             self._g.add_node(page_hash, visit_count=0, elements=[])
             self._visited_map[page_hash] = set()
@@ -55,16 +87,22 @@ class NavigationGraph:
         if elements:
             self._g.nodes[page_hash]["elements"] = elements
 
+    def reset_visits(self) -> None:
+        """清空已访问记录，保留图拓扑（每次 run 开始前调用）。"""
+        self._visited_map.clear()
+
     def mark_visited(self, page_hash: str, element_id: int) -> None:
+        page_hash = self.normalize_hash(page_hash)
         if page_hash not in self._visited_map:
             self._visited_map[page_hash] = set()
         self._visited_map[page_hash].add(element_id)
 
     def get_visited_ids(self, page_hash: str) -> List[int]:
-        return sorted(self._visited_map.get(page_hash, set()))
+        return sorted(self._visited_map.get(self.normalize_hash(page_hash), set()))
 
     def get_elements(self, page_hash: str) -> List[Dict[str, Any]]:
         """返回页面的完整元素列表（含 id/bbox/label/type）。"""
+        page_hash = self.normalize_hash(page_hash)
         return list(self._g.nodes[page_hash].get("elements", [])) if self._g.has_node(page_hash) else []
 
     def get_element_labels(self, page_hash: str) -> List[str]:
@@ -73,15 +111,38 @@ class NavigationGraph:
 
     def screenshot_path(self, page_hash: str, memory_dir: str) -> str:
         """按约定推导页面截图路径: memory/screenshots/{hash}.png。"""
-        from pathlib import Path
         return str(Path(memory_dir) / "screenshots" / f"{page_hash}.png")
 
     def get_unvisited_ids(self, page_hash: str, all_element_ids: List[int]) -> List[int]:
+        page_hash = self.normalize_hash(page_hash)
         visited = self._visited_map.get(page_hash, set())
         return [eid for eid in all_element_ids if eid not in visited]
 
     def is_fully_explored(self, page_hash: str, all_element_ids: List[int]) -> bool:
         return len(self.get_unvisited_ids(page_hash, all_element_ids)) == 0
+
+    def get_outbound_nav_hints(self, page_hash: str) -> List[int]:
+        """返回当前页中指向"有未探索元素子页"的元素 ID 列表（用于 DFS 导航）。
+
+        当当前页所有元素均已访问时，SequentialDecider 通过这些 ID 重新点击
+        对应按钮导航到还有未探索内容的子页，实现跨页持续探索。
+        """
+        page_hash = self.normalize_hash(page_hash)
+        hints: List[int] = []
+        if not self._g.has_node(page_hash):
+            return hints
+        for _, child_hash, edge_data in self._g.edges(page_hash, data=True):
+            child_hash = self.normalize_hash(child_hash)
+            if child_hash == page_hash:
+                continue  # 自环，跳过
+            child_elems = self._g.nodes[child_hash].get("elements", [])
+            child_all_ids = [e["id"] for e in child_elems]
+            child_unvisited = self.get_unvisited_ids(child_hash, child_all_ids)
+            if child_unvisited:
+                elem_id = edge_data.get("element_id")
+                if elem_id is not None and elem_id not in hints:
+                    hints.append(elem_id)
+        return hints
 
     def add_transition(
         self,
@@ -91,6 +152,8 @@ class NavigationGraph:
         element_id: int,
         element_label: str = "",
     ) -> None:
+        from_hash = self.normalize_hash(from_hash)
+        to_hash   = self.normalize_hash(to_hash)
         self._g.add_edge(from_hash, to_hash, action=action, element_id=element_id, label=element_label)
         logger.debug("导航边: %s -[%s:%s]-> %s", from_hash[:8], action, element_label or element_id, to_hash[:8])
 

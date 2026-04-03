@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-"""LangGraphWorker：将 Vision + Brain + ADB + 三层记忆 串联成完整的测试执行流。
+"""LangGraphWorker：测试流程统一协调器。
 
-职责：
-- 持有 VisionProvider、BrainProvider、MemoryManager 的引用
-- 初始化 ContextBuilder，供 perception 节点调用
-- 初始化 ADBController（懒加载）
-- 构建并编译 LangGraph 状态图
-- 提供 run(task)、run_recovery(reason) 接口
-- 测试结束后自动持久化导航图 + 保存成功路径
+职责（仅此一项）：
+- 持有 VisionProvider、BrainProvider、MemoryManager、ADBController 引用
+- 构建并运行 LangGraph 导向图（run / run_recovery）
+- 展出节点所需的简单操作接口（capture / detect / execute）
+
+截图存储 → MediaStore    报告生成 → core.reporting.writer
 """
 
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PIL import Image
@@ -22,6 +20,8 @@ from core.context.protocol import ContextBuilder
 from core.llm.base import BrainProvider
 from core.vision.base import VisionProvider
 from core.memory.manager import MemoryManager
+from core.agent.media_store import MediaStore
+from core.reporting.writer import write_report
 from tools import ADBController, ADBError, RunnerSettings
 from core.agent.executor import ActionExecutor
 
@@ -48,6 +48,7 @@ class LangGraphWorker:
         self.config = config
 
         self.memory = MemoryManager(config)
+        self.media  = MediaStore(config)
 
         self.context_builder = ContextBuilder(
             working_memory=self.memory.working,
@@ -101,29 +102,20 @@ class LangGraphWorker:
         self._get_adb()  # 确保 _executor 已初始化
         self._executor.execute(action)
 
-    def save_screenshot(self, image: Image.Image, step: int, run_dir: str) -> None:
-        """保存当次运行步骤截图到 runs/<run_id>/。"""
-        if not self.config.output.save_screenshots:
-            return
-        path = Path(run_dir) / f"step_{step:03d}.png"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        image.save(str(path))
-        logger.debug("截图已保存: %s", path)
+    def save_screenshot(self, image: Image.Image, step: int, run_dir: str = "") -> None:
+        self.media.save_step(image, step)
 
-    def save_page_screenshot(self, image: Image.Image, page_hash: str, memory_dir: str) -> str:
-        """按 page_hash 保存页面截图到 memory/screenshots/（已存在时跳过）。
+    def save_page_screenshot(self, image: Image.Image, page_hash: str, memory_dir: str = "") -> str:
+        return self.media.save_page(image, page_hash)
 
-        Returns:
-            保存后的本地路径；save_screenshots=False 时返回空串。
-        """
-        if not self.config.output.save_screenshots:
-            return ""
-        path = Path(memory_dir) / "screenshots" / f"{page_hash}.png"
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            image.save(str(path))
-            logger.debug("页面截图已保存: %s", path)
-        return str(path)
+    def save_annotated_screenshot(
+        self,
+        image: Image.Image,
+        ui_elements: List[Dict[str, Any]],
+        step: int,
+        run_dir: str = "",
+    ) -> None:
+        self.media.save_annotated(image, ui_elements, step)
 
     # ── 主入口 ──────────────────────────────────────────────────────
 
@@ -151,6 +143,9 @@ class LangGraphWorker:
         logger.info("Run Dir : %s", self.config.run_dir)
         logger.info("=" * 60)
 
+        # 记录本轮开始时的 Bug 水位，用于报告中只展示新增 Bug
+        pre_run_bug_id = self.memory.experience.get_last_bug_id()
+
         # ── 连接设备 + 启动游戏 ─────────────────────────────────────
         adb = self._get_adb()
         if self.config.adb.game_package:
@@ -164,7 +159,6 @@ class LangGraphWorker:
             "screenshot":     None,
             "ui_elements":    [],
             "page_hash":      "",
-            "prev_hash":      "",
             "context_packet": None,
             "current_action": None,
             "step":           0,
@@ -190,7 +184,8 @@ class LangGraphWorker:
         except Exception as exc:
             logger.error("Agent 执行异常: %s", exc, exc_info=True)
             self.memory.persist()
-            return {"status": "error", "steps": 0, "reason": str(exc), "history": [], "nav_stats": {}}
+            return {"status": "error", "steps": 0, "reason": str(exc),
+                    "history": [], "nav_stats": {}, "bug_summary": {}, "bugs": []}
 
         # ── 测试结束后持久化记忆 ──────────────────────────────────
         result_str = final_state.get("result", "")
@@ -208,14 +203,38 @@ class LangGraphWorker:
             nav_stats["pages"], nav_stats["transitions"], nav_stats["visited_elements"],
         )
 
-        status = "pass" if is_pass else "fail"
+        # ── Bug 汇总 ────────────────────────────────────────────
+        all_bugs = self.memory.experience.get_all_bugs()
+        bug_summary = {"total": len(all_bugs)}
+        for b in all_bugs:
+            cat = b.get("category", "unknown") or "unknown"
+            bug_summary[cat] = bug_summary.get(cat, 0) + 1
+        if all_bugs:
+            logger.info("Bug 汇总: %s", bug_summary)
+
+        status   = "pass" if is_pass else "fail"
+        history  = self.memory.working.recent(n=steps)
+        new_bugs = self.memory.experience.get_bugs_since(pre_run_bug_id)
+        self._save_report(
+            run_dir=self.config.run_dir,
+            run_id=self.config.run_id,
+            game_package=self.config.adb.game_package,
+            task=task, status=status, steps=steps, history=history,
+            nav_stats=nav_stats, new_bugs=new_bugs, reason=result_str,
+        )
+
         return {
-            "status":    status,
-            "steps":     steps,
-            "reason":    result_str,
-            "history":   self.memory.working.recent(n=steps),
-            "nav_stats": nav_stats,
+            "status":      status,
+            "steps":       steps,
+            "reason":      result_str,
+            "history":     history,
+            "nav_stats":   nav_stats,
+            "bug_summary": bug_summary,
+            "bugs":        all_bugs,
         }
+
+    def _save_report(self, **kwargs) -> None:
+        write_report(**kwargs)
 
     def run_recovery(self, reason: str) -> bool:
         """触发异常恢复子图。

@@ -54,6 +54,11 @@ def _input_text(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.input_text(action.get("params", {}).get("text", ""))
 
 
+@_register("press_back")
+def _press_back(adb: "ADBController", action: Dict[str, Any]) -> None:
+    adb.press_back()
+
+
 @_register("press_home")
 def _press_home(adb: "ADBController", action: Dict[str, Any]) -> None:
     adb.press_home()

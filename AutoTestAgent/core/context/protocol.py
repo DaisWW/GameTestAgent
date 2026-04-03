@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+from core.vision.perception import detect_ui_freeze
+
 from PIL import Image
 
 if TYPE_CHECKING:
@@ -55,6 +57,10 @@ class ContextPacket:
 
     def get_page_hash(self) -> str:
         return self.current_observation.get("page_hash", "")
+
+    def get_nav_hints(self) -> List[int]:
+        """当前页已探索完毕时，指向有未探索子页的元素 ID 列表（DFS 导航用）。"""
+        return self.current_observation.get("nav_hints", [])
 
 
 class ContextBuilder:
@@ -103,12 +109,16 @@ class ContextBuilder:
         current_path = self._ng.get_breadcrumb(hash_seq)
 
         anomaly_flag = self._wm.get_anomaly_flag()
+        if not anomaly_flag:
+            anomaly_flag = detect_ui_freeze(hash_seq) or ""
         if not anomaly_flag and self._ng.is_in_aba_loop(hash_seq):
             anomaly_flag = f"ABA 循环：页面 {page_hash[:8]} 被反复访问（共 {visit_count} 次）"
 
         relevant_experience = self._ep.get_relevant_experience(
             task=task, page_hash=page_hash, element_labels=element_labels,
         )
+
+        nav_hints = self._ng.get_outbound_nav_hints(page_hash)
 
         current_observation = {
             "page_hash":      page_hash,
@@ -117,6 +127,7 @@ class ContextBuilder:
             "unvisited_ids":  unvisited_ids,
             "visited_ids":    visited_ids,
             "total_elements": len(ui_elements),
+            "nav_hints":      nav_hints,
         }
 
         packet = ContextPacket(

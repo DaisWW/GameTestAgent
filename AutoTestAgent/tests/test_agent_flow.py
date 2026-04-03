@@ -91,7 +91,7 @@ def test_memory_manager_records_steps(tmp_path):
         worker._adb      = instance
         worker._executor = MagicMock()
 
-        worker.run("测试记忆记录")
+        result = worker.run("测试记忆记录")
 
     assert isinstance(len(worker.memory.working), int)
     assert result["steps"] >= 0
@@ -129,13 +129,12 @@ def test_sequential_decider_pass(tmp_path):
 def test_config_nested_structure():
     """AgentConfig 嵌套子配置结构是否正确。"""
     config = AgentConfig(
-        vision=VisionConfig(vision_type="mock", omni_mode="http"),
+        vision=VisionConfig(vision_type="mock"),
         llm=LLMConfig(provider="openai", model_name="gpt-4o"),
         adb=ADBConfig(game_package="com.example.game"),
         output=OutputConfig(output_dir="/tmp/test", save_screenshots=True),
     )
     assert config.vision.vision_type == "mock"
-    assert config.vision.omni_mode == "http"
     assert config.llm.provider == "openai"
     assert config.llm.model_name == "gpt-4o"
     assert config.adb.game_package == "com.example.game"

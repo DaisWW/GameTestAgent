@@ -26,7 +26,6 @@ class AgentState(TypedDict, total=False):
     screenshot:     Any
     ui_elements:    List[Dict[str, Any]]
     page_hash:      str
-    prev_hash:      str
     context_packet: Any
     current_action: Optional[Dict[str, Any]]
     step:           int

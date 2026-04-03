@@ -48,7 +48,7 @@ def hamming_distance(hash_a: str, hash_b: str) -> int:
         hash_b: phash 字符串
 
     Returns:
-        整数汉明距离。如果哈希字符串为 MD5（非 phash），则退化为 0/1 比较。
+        整数汉明距离（整数，0 = 完全相同，越大越不同）。
     """
     if len(hash_a) != len(hash_b):
         return int(hash_a != hash_b)

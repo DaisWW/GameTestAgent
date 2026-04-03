@@ -64,6 +64,6 @@ def make_node(worker: "LangGraphWorker"):
                 element_label=action.get("_element_label", ""),
             )
 
-        return {"prev_hash": prev_hash, "page_hash": result_hash, "step": step + 1}
+        return {"page_hash": result_hash, "step": step + 1}
 
     return node

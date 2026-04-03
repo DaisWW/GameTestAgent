@@ -99,6 +99,10 @@ class MemoryManager:
         """从 WorkingMemory 获取异常标记（ABA 循环 / 卡死点击）。"""
         return self.working.get_anomaly_flag()
 
+    def reset_visits(self) -> None:
+        """清空导航图访问记录，保留拓扑（每次 run 开始前调用）。"""
+        self.nav_graph.reset_visits()
+
     def persist(self) -> None:
         """持久化 NavigationGraph 到 JSON 文件。"""
         self.nav_graph.save_json()

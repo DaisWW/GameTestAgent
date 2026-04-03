@@ -4,6 +4,7 @@ from .settings import (
     LLMConfig,
     ADBConfig,
     OutputConfig,
+    CheckerConfig,
     load_config,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "LLMConfig",
     "ADBConfig",
     "OutputConfig",
+    "CheckerConfig",
     "load_config",
 ]

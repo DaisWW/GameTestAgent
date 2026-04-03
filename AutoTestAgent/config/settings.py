@@ -12,8 +12,16 @@ _ROOT = Path(__file__).parent.parent
 
 
 def load_config(env_file: Optional[str] = None) -> "AgentConfig":
-    """从 .env 文件加载配置，env_file 默认为项目根目录的 .env。"""
-    target = env_file or str(_ROOT / ".env")
+    """从 .env 文件加载配置。
+
+    优先级：env_file 参数 > .env > .env.example
+    """
+    if env_file:
+        target = env_file
+    elif (_ROOT / ".env").exists():
+        target = str(_ROOT / ".env")
+    else:
+        target = str(_ROOT / ".env.example")
     load_dotenv(target, override=False)
     return AgentConfig(
         vision=VisionConfig(
@@ -39,6 +47,14 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
         output=OutputConfig(
             output_dir=os.getenv("OUTPUT_DIR", ""),
             save_screenshots=os.getenv("SAVE_SCREENSHOTS", "true").lower() == "true",
+        ),
+        checker=CheckerConfig(
+            crash=os.getenv("CHECK_CRASH", "true").lower() == "true",
+            layout=os.getenv("CHECK_LAYOUT", "true").lower() == "true",
+            visual=os.getenv("CHECK_VISUAL", "true").lower() == "true",
+            freeze=os.getenv("CHECK_FREEZE", "true").lower() == "true",
+            functional=os.getenv("CHECK_FUNCTIONAL", "true").lower() == "true",
+            content=os.getenv("CHECK_CONTENT", "true").lower() == "true",
         ),
         max_steps=int(os.getenv("MAX_STEPS", "30")),
         step_delay=float(os.getenv("STEP_DELAY", "1.0")),
@@ -94,6 +110,27 @@ class OutputConfig:
     save_screenshots: bool = True
 
 
+@dataclass
+class CheckerConfig:
+    """Bug 检测器开关配置。
+
+    每个字段对应 checkers/ 中的一个检测维度，设为 False 可禁用。
+    """
+
+    crash: bool = True
+    """崩溃检测（ADB 进程退出 / ANR）"""
+    layout: bool = True
+    """UI 布局异常（元素重叠 / 越界 / 过密）"""
+    visual: bool = True
+    """画面异常（黑屏 / 白屏 / 纹理丢失）"""
+    freeze: bool = True
+    """卡死 / 循环检测（UI 冻结 / ABA 循环 / 连续无响应）"""
+    functional: bool = True
+    """功能异常（按钮无响应 / 死胡同 / 无返回路径）"""
+    content: bool = True
+    """文本内容异常（占位符 / 未翻译 key / 乱码）"""
+
+
 # ── 顶层配置 ─────────────────────────────────────────────────────
 
 
@@ -105,6 +142,7 @@ class AgentConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     adb: ADBConfig = field(default_factory=ADBConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    checker: CheckerConfig = field(default_factory=CheckerConfig)
 
     # ── Agent loop ──────────────────────────────────────────────────
     max_steps: int = 30

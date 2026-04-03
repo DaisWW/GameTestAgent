@@ -40,9 +40,10 @@ class SequentialDecider(BrainProvider):
         unvisited  = packet.get_unvisited_ids()
         elem_map   = {e["id"]: e for e in packet.current_observation.get("omni_boxes", [])}
 
-        # 从未访问列表中过滤出可点击的元素
-        tappable = [eid for eid in unvisited if self._is_tappable(elem_map.get(eid, {}))]
-        skipped  = [eid for eid in unvisited if not self._is_tappable(elem_map.get(eid, {}))]
+        # 从未访问列表中一次遍历分出可点击 / 需跳过的元素
+        tappable, skipped = [], []
+        for eid in unvisited:
+            (tappable if self._is_tappable(elem_map.get(eid, {})) else skipped).append(eid)
 
         if skipped:
             skip_labels = [elem_map.get(s, {}).get("label", str(s)) for s in skipped]
@@ -50,11 +51,24 @@ class SequentialDecider(BrainProvider):
                         len(skipped), skip_labels)
 
         if not tappable:
-            logger.info("  [Sequential] 所有可点击元素已遍历，结束任务")
+            nav_hints = packet.get_nav_hints()
+            nav_tappable = [h for h in nav_hints if h in elem_map]
+            if nav_tappable:
+                nav_id    = nav_tappable[0]
+                nav_label = elem_map.get(nav_id, {}).get("label", "")
+                logger.info("  [Sequential] 当前页已探索完，点击 [%d] %s 深入子页", nav_id, nav_label)
+                return {
+                    "action":    "tap",
+                    "params":    {"id": nav_id},
+                    "reasoning": f"DFS 导航：[{nav_id}] {nav_label} → 进入有未探索内容的子页",
+                    "done":      False,
+                    "result":    "",
+                }
+            logger.info("  [Sequential] 所有已知路径均已探索完毕，本轮结束")
             return {
                 "action":    "done",
                 "params":    {},
-                "reasoning": "所有可交互元素已按顺序遍历完毕",
+                "reasoning": "当前页及所有已知子页均已完全探索",
                 "done":      True,
                 "result":    "pass",
             }

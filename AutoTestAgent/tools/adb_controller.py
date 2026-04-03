@@ -189,6 +189,8 @@ class ADBController:
         if any(m in detail.lower() for m in ("error:", "exception", "does not exist", "unable to resolve")):
             raise CommandFailedError(f"启动游戏失败: {detail}")
         time.sleep(self.settings.game_launch_wait)
+        # 清空 logcat 缓冲区，防止 check_crash 读到上一轮的崩溃日志导致误报
+        self._run(["logcat", "-c"], capture_output=True)
 
     # ── 录屏（委托给 ScreenRecorder）──────────────────────────
 

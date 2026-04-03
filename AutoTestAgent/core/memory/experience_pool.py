@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS bug_observations (
     description     TEXT    NOT NULL,
     screenshot_path TEXT    DEFAULT '',
     tags            TEXT    DEFAULT '',
+    severity        TEXT    DEFAULT '',
+    category        TEXT    DEFAULT '',
+    evidence        TEXT    DEFAULT '',
     created_at      TEXT    NOT NULL
 );
 CREATE TABLE IF NOT EXISTS ui_knowledge (
@@ -58,8 +61,22 @@ class ExperiencePool:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_DDL)
+        self._migrate()
         self._conn.commit()
         logger.info("ExperiencePool 已连接: %s", db_path)
+
+    def _migrate(self) -> None:
+        """向后兼容：为旧版 DB 补加新列（SQLite ALTER TABLE 幂等）。"""
+        existing = {
+            row[1] for row in
+            self._conn.execute("PRAGMA table_info(bug_observations)").fetchall()
+        }
+        for col, default in [("severity", "''"), ("category", "''"), ("evidence", "''")]:
+            if col not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE bug_observations ADD COLUMN {col} TEXT DEFAULT {default}"
+                )
+                logger.info("bug_observations: 已补加列 %s", col)
 
     def _now(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
@@ -90,13 +107,29 @@ class ExperiencePool:
 
     # ── Bug 快照 ──────────────────────────────────────────────────────
 
-    def save_bug(self, page_hash: str, description: str, screenshot_path: str = "", tags: Optional[List[str]] = None) -> int:
+    def save_bug(
+        self,
+        page_hash: str,
+        description: str,
+        screenshot_path: str = "",
+        tags: Optional[List[str]] = None,
+        severity: str = "",
+        category: str = "",
+        evidence: Optional[Dict[str, Any]] = None,
+    ) -> int:
         cur = self._conn.execute(
-            "INSERT INTO bug_observations (page_hash, description, screenshot_path, tags, created_at) VALUES (?,?,?,?,?)",
-            (page_hash, description, screenshot_path, json.dumps(tags or [], ensure_ascii=False), self._now()),
+            "INSERT INTO bug_observations "
+            "(page_hash, description, screenshot_path, tags, severity, category, evidence, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (page_hash, description, screenshot_path,
+             json.dumps(tags or [], ensure_ascii=False),
+             severity, category,
+             json.dumps(evidence or {}, ensure_ascii=False),
+             self._now()),
         )
         self._conn.commit()
-        logger.info("已保存 Bug 快照 id=%d hash=%s", cur.lastrowid, page_hash[:8])
+        logger.info("已保存 Bug 快照 id=%d hash=%s [%s][%s]",
+                    cur.lastrowid, page_hash[:8], severity, category)
         return cur.lastrowid
 
     def is_known_bug_page(self, page_hash: str) -> Optional[str]:
@@ -105,9 +138,21 @@ class ExperiencePool:
         ).fetchone()
         return row["description"] if row else None
 
+    def get_last_bug_id(self) -> int:
+        row = self._conn.execute("SELECT MAX(id) AS m FROM bug_observations").fetchone()
+        return row["m"] or 0
+
+    def get_bugs_since(self, min_id: int) -> List[Dict[str, Any]]:
+        return [dict(r) for r in self._conn.execute(
+            "SELECT id, page_hash, description, severity, category, tags, created_at "
+            "FROM bug_observations WHERE id > ? ORDER BY id ASC", (min_id,)
+        ).fetchall()]
+
     def get_all_bugs(self) -> List[Dict[str, Any]]:
         return [dict(r) for r in self._conn.execute(
-            "SELECT page_hash, description, screenshot_path, tags, created_at FROM bug_observations ORDER BY id DESC"
+            "SELECT page_hash, description, screenshot_path, tags, "
+            "severity, category, evidence, created_at "
+            "FROM bug_observations ORDER BY id DESC"
         ).fetchall()]
 
     # ── UI 知识库 ─────────────────────────────────────────────────────

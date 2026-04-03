@@ -1,9 +1,10 @@
 @echo off
 chcp 65001 >nul 2>&1
 
-:: ── 首次运行：自动安装 ────────────────────────────────────────
-if not exist "%~dp0.env" (
-    echo [setup] .env 不存在，先执行安装...
+:: ── 首次运行：检查依赖 ────────────────────────────────────────
+python -c "import langgraph" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [setup] 依赖未安装，先执行安装...
     call "%~dp0setup.bat"
     if %errorlevel% neq 0 ( pause & exit /b 1 )
 )

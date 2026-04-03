@@ -125,6 +125,9 @@ class LLMAdapter(BrainProvider):
                     logger.error("LLM 调用最终失败，使用 fallback: %s", exc)
                     return dict(_FALLBACK_ACTION)
 
+        # 理论上不可达，但防止未来重构遗漏 return
+        return dict(_FALLBACK_ACTION)
+
     # ── 内部辅助 ─────────────────────────────────────────────────
 
     def _build_messages(self, packet: "ContextPacket") -> list:

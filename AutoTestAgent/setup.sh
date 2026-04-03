@@ -23,13 +23,8 @@ echo "[2/3] 安装依赖（可能需要几分钟）..."
 $PYTHON -m pip install -r requirements.txt
 echo "[2/3] 依赖安装完成"
 
-# ── [3/3] 初始化配置与目录 ─────────────────────────────────────
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-    echo "[3/3] .env 已从模板创建，请填写 LLM_API_KEY 和 GAME_PACKAGE"
-else
-    echo "[3/3] .env 已存在，跳过"
-fi
+# ── [3/3] 配置说明 ────────────────────────────────────────────
+echo "[3/3] 默认使用 .env.example 配置；如需自定义请创建 .env（优先级更高）"
 
 echo ""
 echo "  ╔══════════════════════════════════════════════╗"
