@@ -1,0 +1,30 @@
+# ── LangGraph / LangChain ────────────────────────────────────
+langgraph>=0.3.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.3.0      # openai / qwen / deepseek / ollama
+langchain-community>=0.3.0  # local models
+
+# ── 其他 LLM provider（按需安装一个即可）──────────────────────────
+# langchain-anthropic>=0.3.0  # Claude
+# langchain-google-genai>=2.0.0  # Gemini
+
+# ── LLM API client ───────────────────────────────────────────
+openai>=1.30.0
+
+# ── Vision ───────────────────────────────────────────────────
+Pillow>=10.0.0
+requests>=2.31.0
+
+# ── Config & utils ───────────────────────────────────────────
+python-dotenv>=1.0.0
+typing-extensions>=4.9.0
+
+# ── Memory system ─────────────────────────────────────────────
+imagehash>=4.3.1
+networkx>=3.2.0
+
+# ── Optional: OmniParser local mode ─────────────────────────
+# 仅在 OMNI_MODE=local 时需要，按需安装：
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# pip install git+https://github.com/microsoft/OmniParser.git

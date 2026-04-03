@@ -1,0 +1,51 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# ── Virtual environments ───────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.conda/
+
+# ── Secrets / Local config ─────────────────────────────────────
+.env
+!.env.example
+
+# ── Runtime data（保留目录但忽略内容）──────────────────────────────
+data/logs/*.db
+data/logs/*.json
+data/screenshots/*.png
+data/screenshots/*.jpg
+!data/logs/.gitkeep
+!data/screenshots/.gitkeep
+
+# ── 本地模型权重（体积大，不入仓）──────────────────────────
+models/
+!models/.gitkeep
+OmniParser/*.pth
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
