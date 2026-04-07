@@ -61,7 +61,7 @@ class FunctionalChecker(BugChecker):
         # 仅当可点击元素 ≥5 时检测，避免对弹窗、引导页等正常页面过多误报
         _BACK_CHECK_MIN_CLICKABLE = 20  # Unity 游戏用场景导航，小于此数的页面不检查
         step = state.get("step", 0)
-        if step > 0 and len(clickable) >= _BACK_CHECK_MIN_CLICKABLE:
+        if step > 0 and len(clickable) >= _BACK_CHECK_MIN_CLICKABLE and not _in_loading_loop:
             # 检查全部元素（含 text 类型），因为返回按钮可能被 OCR 识别为 text
             has_back = any(
                 any(kw in (e.get("label", "") or "").lower() for kw in _BACK_KEYWORDS)
@@ -87,7 +87,7 @@ class FunctionalChecker(BugChecker):
             recent = worker.memory.working.recent(n=1)
             if recent:
                 last = recent[-1]
-                if last.action == ActionType.TAP and not last.success:
+                if last.action == ActionType.TAP and not last.success and not _in_loading_loop:
                     bugs.append(BugReport(
                         category=BugCategory.FUNCTIONAL,
                         severity=BugSeverity.MINOR,

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ── 阈值配置 ────────────────────────────────────────────────────
 _BLACK_MEAN_THRESHOLD = 10       # 像素均值 < 10 认为黑屏
 _LOW_STD_THRESHOLD = 5           # 像素标准差 < 5 认为纯色屏
-_SOLID_BLOCK_RATIO = 0.4         # 超过 40% 面积为同一纯色 → 纹理丢失
+_SOLID_BLOCK_RATIO = 0.6         # 超过 60% 面积为同一纯色 → 纹理丢失（游戏背景天然占 40-60%）
 
 # ── 加载画面关键词（UI 元素 label 中含有这些词则认为是加载中）──
 _LOADING_KEYWORDS = frozenset([
