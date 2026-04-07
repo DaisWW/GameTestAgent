@@ -1,26 +1,21 @@
 """
-DINOv2-Small  —  安装 + 启动 + 验证  (单文件)
+DINOv2-Small  —  安装 + 验证  (单文件)
 
 用法:
-    python dinov2.py          # 自动安装(如需)并启动
+    python dinov2.py          # 自动安装(如需)并验证
     python dinov2.py --check  # 仅查看状态
 
-功能: 提供截图嵌入服务，用于页面身份识别
+功能: 页面截图嵌入，用于页面身份识别
 模型: facebook/dinov2-small  (ViT-S/14, 22M 参数, 384 维嵌入)
-API:
-    POST /embed       — 上传图片，返回 384 维归一化向量
-    POST /similarity  — 上传两张图片，返回余弦相似度
-    GET  /health      — 健康检查
+特点: 无需启动服务，由 Grounding DINO Provider 在进程内同时加载
 """
 from __future__ import annotations
-import argparse, io, json, os, socket, subprocess, sys, time
+import argparse, os, socket, subprocess, sys, time
 from pathlib import Path
 
 # ─────────────────────── 配置 ────────────────────────────────
 DIR       = Path(__file__).parent
 CACHE_DIR = DIR / "cache"              # 模型缓存目录
-PORT      = 7862
-URL       = f"http://127.0.0.1:{PORT}"
 PROXY     = "http://127.0.0.1:7890"
 HF_MIRROR = "https://hf-mirror.com"
 MODEL_ID  = "facebook/dinov2-small"
@@ -35,11 +30,6 @@ def err(m):  _p("[✗]", m)
 def sep(t):  print(f"\n{'─'*52}\n  {t}\n{'─'*52}", flush=True)
 
 # ─────────────────────── 状态检测 ────────────────────────────
-def port_open(port=PORT) -> bool:
-    with socket.socket() as s:
-        s.settimeout(1)
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
 def proxy_up() -> bool:
     try:
         h, p = PROXY.rsplit(":", 1)
@@ -56,7 +46,6 @@ def model_cached() -> bool:
     if not config_file.exists():
         return False
     if not model_file.exists():
-        # 也检查 pytorch_model.bin 格式
         alt = CACHE_DIR / "pytorch_model.bin"
         if not alt.exists():
             return False
@@ -71,6 +60,18 @@ def mk_env(proxy: str | None) -> dict:
 
 def best_proxy() -> str | None:
     return PROXY if proxy_up() else None
+
+def _clean_incomplete(cache: Path):
+    """清理 huggingface_hub 残留的 .incomplete 和 .lock 文件。"""
+    hf_cache = cache / ".cache"
+    if not hf_cache.exists():
+        return
+    for f in hf_cache.rglob("*.incomplete"):
+        try: f.unlink(); info(f"  清理残留: {f.name}")
+        except OSError: pass
+    for f in hf_cache.rglob("*.lock"):
+        try: f.unlink()
+        except OSError: pass
 
 # ─────────────────────── 安装步骤 ────────────────────────────
 def step_deps():
@@ -94,9 +95,9 @@ def step_deps():
         ).returncode != 0:
             raise RuntimeError("PyTorch 安装失败")
 
-    # 检查 transformers + flask + pillow
+    # 检查 transformers + pillow
     missing = []
-    for pkg, imp in [("transformers", "transformers"), ("flask", "flask"), ("Pillow", "PIL")]:
+    for pkg, imp in [("transformers", "transformers"), ("Pillow", "PIL")]:
         rc = subprocess.run([sys.executable, "-c", f"import {imp}"], capture_output=True).returncode
         if rc != 0:
             missing.append(pkg)
@@ -114,41 +115,37 @@ def step_download_model():
         return
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    _clean_incomplete(CACHE_DIR)
 
     # 尝试各种下载源
     endpoints = [
-        ("https://huggingface.co", "HuggingFace", None),
-        ("https://huggingface.co", "HF+代理",     PROXY if proxy_up() else None),
-        (HF_MIRROR,                "hf-mirror",   None),
-        (HF_MIRROR,                "hf-mirror+代理", PROXY if proxy_up() else None),
+        ("https://huggingface.co", "HF+代理",         PROXY if proxy_up() else None),
+        (HF_MIRROR,                "hf-mirror",       None),
+        (HF_MIRROR,                "hf-mirror+代理",  PROXY if proxy_up() else None),
+        ("https://huggingface.co", "HuggingFace",     None),
     ]
     for endpoint, label, eproxy in endpoints:
         if eproxy and not proxy_up():
             continue
         info(f"  [{label}]  {endpoint}")
         env = {**mk_env(eproxy), "HF_ENDPOINT": endpoint}
-        rc = subprocess.run(
-            [sys.executable, "-c",
-             f"from huggingface_hub import snapshot_download;"
-             f"snapshot_download('{MODEL_ID}', local_dir=r'{CACHE_DIR}')"],
-            env=env,
-        ).returncode
+        try:
+            rc = subprocess.run(
+                [sys.executable, "-c",
+                 f"from huggingface_hub import snapshot_download;"
+                 f"snapshot_download('{MODEL_ID}', local_dir=r'{CACHE_DIR}')"],
+                env=env,
+                timeout=600,
+            ).returncode
+        except subprocess.TimeoutExpired:
+            warn(f"  [{label}] 超时（600s）")
+            _clean_incomplete(CACHE_DIR)
+            continue
         if rc == 0 and model_cached():
             ok(f"模型下载完成 [{label}]")
             return
         warn(f"  [{label}] 失败")
-
-    # 最后尝试 transformers 自带下载
-    info("尝试 transformers 自动下载...")
-    rc = subprocess.run(
-        [sys.executable, "-c",
-         f"from transformers import AutoModel;"
-         f"AutoModel.from_pretrained('{MODEL_ID}', cache_dir=r'{CACHE_DIR}')"],
-        env=mk_env(best_proxy()),
-    ).returncode
-    if rc == 0:
-        ok("模型下载完成 (transformers 缓存)")
-        return
+        _clean_incomplete(CACHE_DIR)
 
     warn("所有渠道失败，请手动下载:\n"
          f"  huggingface-cli download {MODEL_ID} --local-dir {CACHE_DIR}")
@@ -157,91 +154,32 @@ def install():
     step_deps()
     step_download_model()
 
-# ─────────────────────── HTTP 服务 ───────────────────────────
-def create_app():
-    """创建 Flask 应用，加载模型。"""
+# ─────────────────────── 验证 ────────────────────────────────
+def verify():
+    """加载模型并做一次嵌入推理验证。"""
+    sep("验证模型推理")
     import torch
-    from flask import Flask, request, jsonify
     from PIL import Image
     from transformers import AutoImageProcessor, AutoModel
 
-    app = Flask(__name__)
-
-    # 加载模型
-    info("加载 DINOv2-Small 模型...")
+    model_path = str(CACHE_DIR) if model_cached() else MODEL_ID
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    info(f"推理设备: {device}")
-
-    if model_cached() and (CACHE_DIR / "config.json").exists():
-        model_path = str(CACHE_DIR)
-    else:
-        model_path = MODEL_ID
+    info(f"加载模型: {model_path}  设备: {device}")
 
     processor = AutoImageProcessor.from_pretrained(model_path)
     model = AutoModel.from_pretrained(model_path).to(device).eval()
-    ok(f"模型加载完成 ({EMBED_DIM} 维嵌入)")
+    ok("模型加载成功")
 
-    def _embed_image(pil_image: Image.Image) -> list:
-        """提取单张图片的归一化嵌入向量。"""
-        inputs = processor(images=pil_image, return_tensors="pt").to(device)
-        with torch.no_grad():
-            outputs = model(**inputs)
-        # CLS token = last_hidden_state[:, 0, :]
-        cls = outputs.last_hidden_state[:, 0, :]
-        cls = cls / cls.norm(dim=-1, keepdim=True)
-        return cls[0].cpu().tolist()
+    # 用 224x224 测试图做验证
+    dummy = Image.new("RGB", (224, 224), color=(128, 128, 128))
+    inputs = processor(images=dummy, return_tensors="pt").to(device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    cls = outputs.last_hidden_state[:, 0, :]
+    cls = cls / cls.norm(dim=-1, keepdim=True)
 
-    def _read_image(file) -> Image.Image:
-        """从 Flask request file 读取 PIL Image。"""
-        return Image.open(io.BytesIO(file.read())).convert("RGB")
-
-    @app.route("/health", methods=["GET"])
-    def health():
-        return jsonify({"status": "ok", "model": MODEL_ID, "device": device, "dim": EMBED_DIM})
-
-    @app.route("/embed", methods=["POST"])
-    def embed():
-        if "image" not in request.files:
-            return jsonify({"error": "缺少 image 字段"}), 400
-        img = _read_image(request.files["image"])
-        vec = _embed_image(img)
-        return jsonify({"embedding": vec, "dim": len(vec)})
-
-    @app.route("/similarity", methods=["POST"])
-    def similarity():
-        if "image1" not in request.files or "image2" not in request.files:
-            return jsonify({"error": "缺少 image1 或 image2 字段"}), 400
-        img1 = _read_image(request.files["image1"])
-        img2 = _read_image(request.files["image2"])
-        vec1 = _embed_image(img1)
-        vec2 = _embed_image(img2)
-        # 余弦相似度（向量已归一化，直接点积）
-        sim = sum(a * b for a, b in zip(vec1, vec2))
-        return jsonify({"similarity": sim, "is_same_page": sim > 0.92})
-
-    return app
-
-# ─────────────────────── 启动 & 验证 ─────────────────────────
-def launch():
-    sep("启动 DINOv2 嵌入服务")
-    app = create_app()
-    ok(f"服务地址: {URL}")
-    print(f"\n{'='*52}\n  {URL}  (Ctrl+C 停止)\n{'='*52}\n", flush=True)
-    app.run(host="127.0.0.1", port=PORT, threaded=False)
-
-def wait_ready(timeout=60) -> bool:
-    sep("验证服务就绪")
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if port_open():
-            print(flush=True)
-            ok(f"服务就绪！  {URL}")
-            return True
-        used = int(time.time() - (deadline - timeout))
-        print(f"\r  等待中... {used}s/{timeout}s", end="", flush=True)
-        time.sleep(1)
-    print(flush=True)
-    return False
+    ok(f"推理验证通过  (设备: {device}, 嵌入维度: {cls.shape[-1]})")
+    return True
 
 # ─────────────────────── 主入口 ──────────────────────────────
 def status():
@@ -249,7 +187,6 @@ def status():
     print(f"  DINOv2-Small  状态")
     print(f"{'='*52}")
     print(f"  模型缓存  : {'是' if model_cached() else '否'}  {CACHE_DIR}")
-    print(f"  服务运行  : {'是' if port_open()    else '否'}  {URL}")
     print(f"  代理可用  : {'是' if proxy_up()     else '否'}  {PROXY}")
     print(f"{'='*52}")
 
@@ -261,33 +198,25 @@ def main() -> int:
         except Exception: pass
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check",   action="store_true", help="仅查看状态")
-    ap.add_argument("--timeout", type=int, default=60)
-    ap.add_argument("--port",    type=int, default=PORT)
+    ap.add_argument("--check", action="store_true", help="仅查看状态")
     args = ap.parse_args()
 
-    if args.port != PORT:
-        # 需要更新模块级变量供其他函数使用
-        import dinov2 as _self
-        _self.PORT = args.port
-        _self.URL  = f"http://127.0.0.1:{args.port}"
-
-    print(f"\n{'='*52}\n  DINOv2-Small  —  安装 & 启动器\n{'='*52}")
+    print(f"\n{'='*52}\n  DINOv2-Small  —  安装 & 验证器\n{'='*52}")
 
     if args.check:
         status(); return 0
-
-    if port_open():
-        ok(f"服务已在运行  {URL}"); return 0
 
     if not model_cached():
         try: install()
         except Exception as e: err(f"安装失败: {e}"); return 1
 
     try:
-        launch()
-    except KeyboardInterrupt:
-        info("停止中...")
+        verify()
+    except Exception as e:
+        err(f"验证失败: {e}")
+        return 1
+
+    ok("DINOv2 就绪，无需启动服务，Agent 会在进程内直接加载模型")
     return 0
 
 if __name__ == "__main__":

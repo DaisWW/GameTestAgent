@@ -31,7 +31,7 @@ def load_config(env_file: Optional[str] = None) -> "AgentConfig":
             omni_imgsz=int(os.getenv("OMNI_IMGSZ", "1280")),
             omni_use_paddleocr=os.getenv("OMNI_USE_PADDLEOCR", "false").lower() == "true",
             gdino_model=os.getenv("GDINO_MODEL", "IDEA-Research/grounding-dino-tiny"),
-            gdino_text_prompt=os.getenv("GDINO_TEXT_PROMPT", "button . icon . close . back . text . input ."),
+            gdino_text_prompt=os.getenv("GDINO_TEXT_PROMPT", "button ."),
             gdino_box_threshold=float(os.getenv("GDINO_BOX_THRESHOLD", "0.25")),
             gdino_text_threshold=float(os.getenv("GDINO_TEXT_THRESHOLD", "0.25")),
         ),
@@ -87,8 +87,8 @@ class VisionConfig:
     """启用 PaddleOCR（中文识别更优，Windows OneDNN 下可能崩溃）"""
     gdino_model: str = "IDEA-Research/grounding-dino-tiny"
     """Grounding DINO 模型 ID（本地缓存优先，否则从 HuggingFace 下载）"""
-    gdino_text_prompt: str = "button . icon . close . back . text . input ."
-    """Grounding DINO 检测提示词，以 " . " 分隔各类别"""
+    gdino_text_prompt: str = "button ."
+    """Grounding DINO 检测提示词，以 " . " 分隔各类别（单类别效果最佳）"""
     gdino_box_threshold: float = 0.25
     """Grounding DINO bbox 置信度阈值"""
     gdino_text_threshold: float = 0.25

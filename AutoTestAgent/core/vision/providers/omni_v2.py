@@ -259,11 +259,11 @@ class Provider(VisionProvider):
 
     def warm_up(self) -> None:
         logger.info("OmniParser V2 预热中（发送 1×1 空图）...")
-        dummy = Image.new("RGB", (1, 1))
         try:
-            self.detect(dummy)
-        except Exception:
-            pass
+            self._backend.call(Image.new("RGB", (1, 1)))
+            logger.info("OmniParser V2 预热完成")
+        except Exception as exc:
+            logger.warning("OmniParser V2 预热警告（非致命）: %s", exc)
 
     def teardown(self) -> None:
         pass

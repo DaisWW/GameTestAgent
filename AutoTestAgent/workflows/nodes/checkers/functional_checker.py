@@ -34,7 +34,14 @@ class FunctionalChecker(BugChecker):
         clickable = [e for e in elements if e.get("type") in _CLICKABLE_TYPES]
 
         # ── 死胡同检测：无任何可交互元素 ────────────────────────
-        if elements and not clickable:
+        # ABA 循环页面（加载屏循环）不视为真实死胡同
+        _anomaly = ""
+        _packet = state.get("context_packet")
+        if _packet is not None:
+            _anomaly = getattr(_packet, "anomaly_flag", "") or ""
+        _in_loading_loop = "ABA" in _anomaly or "循环" in _anomaly
+
+        if elements and not clickable and not _in_loading_loop:
             bugs.append(BugReport(
                 category=BugCategory.FUNCTIONAL,
                 severity=BugSeverity.MAJOR,

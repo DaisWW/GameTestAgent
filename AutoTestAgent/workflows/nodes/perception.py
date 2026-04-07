@@ -20,7 +20,7 @@ def make_node(worker: "LangGraphWorker"):
 
         screenshot  = worker.capture()
         ui_elements = worker.detect(screenshot)
-        logger.info("  OmniParser: %d 个元素", len(ui_elements))
+        logger.info("  Vision: %d 个元素", len(ui_elements))
         worker.save_annotated_screenshot(screenshot, ui_elements, step, state.get("run_dir", worker.config.run_dir))
 
         page_hash = compute_phash(screenshot)

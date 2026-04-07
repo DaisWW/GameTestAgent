@@ -210,12 +210,17 @@ def launch() -> subprocess.Popen:
     # 代理时排除 localhost，防止 gradio 调用自身端口时被代理拦截
     env["NO_PROXY"]  = "127.0.0.1,localhost,::1"
     env["no_proxy"]  = "127.0.0.1,localhost,::1"
-    # 优先使用中文 OCR wrapper（不改 OmniParser 源码），回退到原版
-    _gradio_script = "gradio_demo_zh.py" if (OMNI / "gradio_demo_zh.py").exists() else "gradio_demo.py"
-    info(f"启动脚本: {_gradio_script}")
+    # 优先使用中文 OCR 启动器（位于 models/omni/，不修改 OmniParser 源码），回退到原版
+    _launcher = DIR / "launch_gradio.py"
+    if _launcher.exists():
+        _script, _cwd = str(_launcher), str(DIR)
+        info("启动脚本: launch_gradio.py（中文 OCR）")
+    else:
+        _script, _cwd = "gradio_demo.py", str(OMNI)
+        info("启动脚本: gradio_demo.py（原版）")
     proc = subprocess.Popen(
-        [sys.executable, _gradio_script],
-        cwd=str(OMNI),
+        [sys.executable, _script],
+        cwd=_cwd,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

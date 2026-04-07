@@ -49,8 +49,9 @@ class FreezeChecker(BugChecker):
             elif "ABA" in anomaly_flag or "循环" in anomaly_flag:
                 pass  # DFS 探索本身就会经过同一页面多次，不属游戏 bug
             elif "未引起页面变化" in anomaly_flag:
-                # 连续 PRESS_BACK 不改页是根页正常行为，只在包含非返回操作时才报 Bug
-                if "press_back" not in anomaly_flag.lower():
+                # press_back 在根页不改页、wait 是主动等待——均属正常，不报 Bug
+                _flag_lower = anomaly_flag.lower()
+                if "press_back" not in _flag_lower and "wait()" not in _flag_lower:
                     bugs.append(BugReport(
                         category=BugCategory.FREEZE,
                         severity=BugSeverity.MAJOR,

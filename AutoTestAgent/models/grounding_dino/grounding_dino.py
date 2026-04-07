@@ -61,6 +61,18 @@ def mk_env(proxy: str | None) -> dict:
 def best_proxy() -> str | None:
     return PROXY if proxy_up() else None
 
+def _clean_incomplete(cache: Path):
+    """清理 huggingface_hub 残留的 .incomplete 和 .lock 文件。"""
+    hf_cache = cache / ".cache"
+    if not hf_cache.exists():
+        return
+    for f in hf_cache.rglob("*.incomplete"):
+        try: f.unlink(); info(f"  清理残留: {f.name}")
+        except OSError: pass
+    for f in hf_cache.rglob("*.lock"):
+        try: f.unlink()
+        except OSError: pass
+
 # ─────────────────────── 安装步骤 ────────────────────────────
 def step_deps():
     sep("第 1/2 步  检查 Python 依赖")
@@ -85,7 +97,7 @@ def step_deps():
 
     # 检查 transformers + pillow
     missing = []
-    for pkg, imp in [("transformers>=4.40", "transformers"), ("Pillow", "PIL")]:
+    for pkg, imp in [("transformers>=4.45,<5.0", "transformers"), ("Pillow", "PIL")]:
         rc = subprocess.run([sys.executable, "-c", f"import {imp}"], capture_output=True).returncode
         if rc != 0:
             missing.append(pkg)
@@ -104,40 +116,39 @@ def step_download_model():
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+    # 清理上次可能残留的 incomplete 文件
+    _clean_incomplete(CACHE_DIR)
+
     # 尝试各种下载源
+    # 优先级: HF+代理 > hf-mirror直连 > hf-mirror+代理 > HF直连
     endpoints = [
-        ("https://huggingface.co", "HuggingFace", None),
-        ("https://huggingface.co", "HF+代理",     PROXY if proxy_up() else None),
-        (HF_MIRROR,                "hf-mirror",   None),
-        (HF_MIRROR,                "hf-mirror+代理", PROXY if proxy_up() else None),
+        ("https://huggingface.co", "HF+代理",         PROXY if proxy_up() else None),
+        (HF_MIRROR,                "hf-mirror",       None),
+        (HF_MIRROR,                "hf-mirror+代理",  PROXY if proxy_up() else None),
+        ("https://huggingface.co", "HuggingFace",     None),
     ]
     for endpoint, label, eproxy in endpoints:
         if eproxy and not proxy_up():
             continue
         info(f"  [{label}]  {endpoint}")
         env = {**mk_env(eproxy), "HF_ENDPOINT": endpoint}
-        rc = subprocess.run(
-            [sys.executable, "-c",
-             f"from huggingface_hub import snapshot_download;"
-             f"snapshot_download('{MODEL_ID}', local_dir=r'{CACHE_DIR}')"],
-            env=env,
-        ).returncode
+        try:
+            rc = subprocess.run(
+                [sys.executable, "-c",
+                 f"from huggingface_hub import snapshot_download;"
+                 f"snapshot_download('{MODEL_ID}', local_dir=r'{CACHE_DIR}')"],
+                env=env,
+                timeout=600,   # 10 分钟超时，避免卡死
+            ).returncode
+        except subprocess.TimeoutExpired:
+            warn(f"  [{label}] 超时（600s）")
+            _clean_incomplete(CACHE_DIR)
+            continue
         if rc == 0 and model_cached():
             ok(f"模型下载完成 [{label}]")
             return
         warn(f"  [{label}] 失败")
-
-    # 最后尝试 transformers 自带下载
-    info("尝试 transformers 自动下载...")
-    rc = subprocess.run(
-        [sys.executable, "-c",
-         f"from transformers import AutoModelForZeroShotObjectDetection;"
-         f"AutoModelForZeroShotObjectDetection.from_pretrained('{MODEL_ID}', cache_dir=r'{CACHE_DIR}')"],
-        env=mk_env(best_proxy()),
-    ).returncode
-    if rc == 0:
-        ok("模型下载完成 (transformers 缓存)")
-        return
+        _clean_incomplete(CACHE_DIR)
 
     warn("所有渠道失败，请手动下载:\n"
          f"  huggingface-cli download {MODEL_ID} --local-dir {CACHE_DIR}")
@@ -159,7 +170,9 @@ def verify():
     info(f"加载模型: {model_path}  设备: {device}")
 
     processor = AutoProcessor.from_pretrained(model_path)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_path).to(device)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(
+        model_path, attn_implementation="eager",
+    ).to(device)
     ok("模型加载成功")
 
     # 用 100x100 测试图做验证

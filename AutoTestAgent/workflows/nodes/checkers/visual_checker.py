@@ -41,11 +41,18 @@ _VLM_CONFIRM_PROMPT = (
 
 
 def _is_loading_screen(state: dict) -> bool:
-    """根据当前 UI 元素文本判断是否处于加载/过渡画面。"""
+    """根据 UI 元素文本或 anomaly_flag 判断是否处于加载/过渡画面。"""
+    # 1. UI 标签关键词匹配
     elements = state.get("ui_elements") or []
     for elem in elements:
         label = (elem.get("label") or "").lower()
         if any(kw in label for kw in _LOADING_KEYWORDS):
+            return True
+    # 2. ABA 循环异常标志（FPS 屏等循环加载画面）
+    packet = state.get("context_packet")
+    if packet is not None:
+        anomaly = getattr(packet, "anomaly_flag", "") or ""
+        if "ABA" in anomaly or "循环" in anomaly:
             return True
     return False
 
