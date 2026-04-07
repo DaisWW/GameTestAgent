@@ -62,9 +62,10 @@ class FunctionalChecker(BugChecker):
         _BACK_CHECK_MIN_CLICKABLE = 20  # Unity 游戏用场景导航，小于此数的页面不检查
         step = state.get("step", 0)
         if step > 0 and len(clickable) >= _BACK_CHECK_MIN_CLICKABLE:
+            # 检查全部元素（含 text 类型），因为返回按钮可能被 OCR 识别为 text
             has_back = any(
                 any(kw in (e.get("label", "") or "").lower() for kw in _BACK_KEYWORDS)
-                for e in clickable
+                for e in elements
             )
             if not has_back:
                 # 仅当页面有按钮但没有返回类按钮时报告（纯展示页可能正常）
